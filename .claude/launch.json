@@ -2,11 +2,10 @@
   "version": "0.0.1",
   "configurations": [
     {
-      "name": "out-tonight-dev",
+      "name": "out-tonight",
       "runtimeExecutable": "npm",
       "runtimeArgs": ["run", "dev"],
-      "port": 3100,
-      "autoPort": true
+      "port": 3000
     }
   ]
 }

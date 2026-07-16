@@ -135,7 +135,10 @@ export async function refreshVenue(venueId: number): Promise<VenueRefreshResult>
   if (!html) return { status: "fetch_failed" };
 
   const { extractJsonLdEvents } = await import("./scrape");
-  const scrapedEvents = extractJsonLdEvents(html);
+  const { findSiteScraper } = await import("./site-scrapers");
+
+  const siteScraper = findSiteScraper(venue.url);
+  const scrapedEvents = siteScraper ? siteScraper(html) : extractJsonLdEvents(html);
 
   // Backfill venue coordinates from the first event with a known location.
   if (venue.lat === null || venue.lng === null) {
@@ -155,6 +158,16 @@ export async function refreshVenue(venueId: number): Promise<VenueRefreshResult>
             geocoded.lat,
             geocoded.lng,
             withAddress.address,
+            venue.id
+          );
+        }
+      } else {
+        // Last resort: geocode by venue name alone.
+        const geocoded = await geocode(venue.name);
+        if (geocoded) {
+          db.prepare("UPDATE venues SET lat = ?, lng = ? WHERE id = ?").run(
+            geocoded.lat,
+            geocoded.lng,
             venue.id
           );
         }
