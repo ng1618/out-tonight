@@ -6,6 +6,12 @@ const PUBLIC_PATHS = ["/login", "/api/auth/login"];
 export function proxy(request: NextRequest) {
   const { pathname } = request.nextUrl;
 
+  // No password configured means the gate is off — the local-testing default.
+  // Set APP_PASSWORD before putting this on a public URL.
+  if (!process.env.APP_PASSWORD) {
+    return NextResponse.next();
+  }
+
   if (
     PUBLIC_PATHS.includes(pathname) ||
     pathname.startsWith("/api/cron/") // authenticated separately via CRON_SECRET

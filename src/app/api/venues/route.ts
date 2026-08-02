@@ -4,7 +4,9 @@ import { geocode } from "@/lib/geocode";
 
 export async function GET() {
   const db = getDb();
-  const venues = db.prepare("SELECT * FROM venues ORDER BY name").all();
+  const venues = db
+    .prepare("SELECT * FROM venues ORDER BY favorited DESC, name COLLATE NOCASE")
+    .all();
   return NextResponse.json(venues);
 }
 

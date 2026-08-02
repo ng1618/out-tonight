@@ -7,6 +7,61 @@ declare global {
   var __db: Database.Database | undefined;
 }
 
+/**
+ * Databases created before venues could be auto-discovered have `url NOT NULL`
+ * and no favorited/source columns. Columns can be added in place, but SQLite
+ * cannot drop a NOT NULL constraint — that needs the documented table rebuild.
+ */
+function migrateVenues(db: Database.Database) {
+  const columns = db.prepare("PRAGMA table_info(venues)").all() as {
+    name: string;
+    notnull: number;
+  }[];
+  const has = (name: string) => columns.some((c) => c.name === name);
+
+  if (!has("favorited")) {
+    db.exec("ALTER TABLE venues ADD COLUMN favorited INTEGER NOT NULL DEFAULT 0");
+  }
+  if (!has("source")) {
+    db.exec("ALTER TABLE venues ADD COLUMN source TEXT NOT NULL DEFAULT 'manual'");
+  }
+
+  if (!columns.find((c) => c.name === "url")?.notnull) return;
+
+  // Foreign keys must be off outside the transaction for the rebuild, or the
+  // DROP would cascade into events.venue_id / series.venue_id.
+  db.pragma("foreign_keys = OFF");
+  try {
+    db.exec(`
+      BEGIN;
+      CREATE TABLE venues_new (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        name TEXT NOT NULL UNIQUE COLLATE NOCASE,
+        url TEXT UNIQUE,
+        address TEXT,
+        lat REAL,
+        lng REAL,
+        favorited INTEGER NOT NULL DEFAULT 0,
+        source TEXT NOT NULL DEFAULT 'manual',
+        last_scraped_at TEXT,
+        created_at TEXT NOT NULL DEFAULT (datetime('now'))
+      );
+      INSERT INTO venues_new
+        (id, name, url, address, lat, lng, favorited, source, last_scraped_at, created_at)
+        SELECT id, name, url, address, lat, lng, favorited, source, last_scraped_at, created_at
+        FROM venues;
+      DROP TABLE venues;
+      ALTER TABLE venues_new RENAME TO venues;
+      COMMIT;
+    `);
+  } catch (err) {
+    db.exec("ROLLBACK");
+    throw err;
+  } finally {
+    db.pragma("foreign_keys = ON");
+  }
+}
+
 function init(db: Database.Database) {
   db.pragma("journal_mode = WAL");
   db.pragma("foreign_keys = ON");
@@ -21,13 +76,16 @@ function init(db: Database.Database) {
       created_at TEXT NOT NULL DEFAULT (datetime('now'))
     );
 
+    -- url is nullable: venues discovered while scraping are known by name only.
     CREATE TABLE IF NOT EXISTS venues (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
-      name TEXT NOT NULL,
-      url TEXT NOT NULL UNIQUE,
+      name TEXT NOT NULL UNIQUE COLLATE NOCASE,
+      url TEXT UNIQUE,
       address TEXT,
       lat REAL,
       lng REAL,
+      favorited INTEGER NOT NULL DEFAULT 0,
+      source TEXT NOT NULL DEFAULT 'manual',
       last_scraped_at TEXT,
       created_at TEXT NOT NULL DEFAULT (datetime('now'))
     );
@@ -80,6 +138,8 @@ function init(db: Database.Database) {
       created_at TEXT NOT NULL DEFAULT (datetime('now'))
     );
   `);
+
+  migrateVenues(db);
 
   const homeCount = db
     .prepare("SELECT COUNT(*) AS n FROM home_locations")

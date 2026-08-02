@@ -19,10 +19,13 @@ export type EventRow = {
 export type VenueRow = {
   id: number;
   name: string;
-  url: string;
+  /** null for venues discovered while scraping — known by name only. */
+  url: string | null;
   address: string | null;
   lat: number | null;
   lng: number | null;
+  favorited: number;
+  source: "manual" | "discovered";
   last_scraped_at: string | null;
   created_at: string;
 };

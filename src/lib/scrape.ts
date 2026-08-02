@@ -8,6 +8,12 @@ export type ScrapedEvent = {
   address: string | null;
   lat: number | null;
   lng: number | null;
+  /**
+   * Set when the event happens somewhere other than the site being scraped —
+   * venues also promote shows they host elsewhere. Such an event must not
+   * inherit the scraped venue's coordinates.
+   */
+  externalVenue?: string | null;
 };
 
 const FETCH_USER_AGENT = "out-tonight-personal-app/1.0 (single-user event tracker)";

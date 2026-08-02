@@ -118,6 +118,33 @@ export async function quickAddFromUrl(url: string): Promise<QuickAddResult> {
   return { status: "inserted", id: result.id, title: scraped.title };
 }
 
+/**
+ * Venues learned from a scrape (a promoter listing a show it hosts elsewhere).
+ * Known by name only — no URL to scrape — so they are geocoded once by name
+ * and then behave like any other venue in the list.
+ */
+async function ensureDiscoveredVenue(
+  name: string
+): Promise<{ id: number; name: string }> {
+  const db = getDb();
+
+  const existing = db
+    .prepare("SELECT id, name FROM venues WHERE name = ? COLLATE NOCASE")
+    .get(name) as { id: number; name: string } | undefined;
+  if (existing) return existing;
+
+  const geocoded = await geocode(name);
+
+  const result = db
+    .prepare(
+      `INSERT INTO venues (name, url, lat, lng, source)
+       VALUES (?, NULL, ?, ?, 'discovered')`
+    )
+    .run(name, geocoded?.lat ?? null, geocoded?.lng ?? null);
+
+  return { id: Number(result.lastInsertRowid), name };
+}
+
 export type VenueRefreshResult =
   | { status: "ok"; found: number; inserted: number }
   | { status: "fetch_failed" }
@@ -177,6 +204,13 @@ export async function refreshVenue(venueId: number): Promise<VenueRefreshResult>
 
   let insertedCount = 0;
   for (const scraped of scrapedEvents) {
+    // A promoted show happens elsewhere: link it to its own venue row so it
+    // gets that venue's coordinates instead of inheriting this one's, which
+    // would pass the radius filter for the wrong city.
+    const eventVenue = scraped.externalVenue
+      ? await ensureDiscoveredVenue(scraped.externalVenue)
+      : { id: venue.id, name: venue.name };
+
     const result = await ingestEvent({
       title: scraped.title,
       url: scraped.url,
@@ -186,8 +220,8 @@ export async function refreshVenue(venueId: number): Promise<VenueRefreshResult>
       address: scraped.address,
       lat: scraped.lat,
       lng: scraped.lng,
-      venueId: venue.id,
-      venueName: venue.name,
+      venueId: eventVenue.id,
+      venueName: eventVenue.name,
     });
     if (result.status === "inserted") insertedCount += 1;
   }

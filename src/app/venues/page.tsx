@@ -58,6 +58,18 @@ export default function VenuesPage() {
     load();
   }
 
+  async function toggleFavorited(venue: VenueRow) {
+    setVenues((prev) =>
+      prev.map((v) => (v.id === venue.id ? { ...v, favorited: v.favorited ? 0 : 1 } : v))
+    );
+    await fetch(`/api/venues/${venue.id}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ favorited: !venue.favorited }),
+    });
+    load();
+  }
+
   return (
     <div className="flex flex-1 flex-col gap-4 p-4">
       <h1 className="text-lg font-semibold">Venues</h1>
@@ -98,25 +110,41 @@ export default function VenuesPage() {
         {venues.map((venue) => (
           <div
             key={venue.id}
-            className="flex items-center justify-between gap-2 rounded-xl border border-zinc-200 p-3 dark:border-zinc-800"
+            className="flex items-start gap-2 rounded-xl border border-zinc-200 p-3 dark:border-zinc-800"
           >
-            <div className="min-w-0">
+            <button
+              onClick={() => toggleFavorited(venue)}
+              aria-label={venue.favorited ? "Unfavourite" : "Favourite"}
+              aria-pressed={Boolean(venue.favorited)}
+              className={`flex-shrink-0 text-lg leading-none ${
+                venue.favorited ? "text-amber-500" : "text-zinc-300 dark:text-zinc-600"
+              }`}
+            >
+              {venue.favorited ? "★" : "☆"}
+            </button>
+
+            <div className="min-w-0 flex-1">
               <p className="truncate font-medium">{venue.name}</p>
               <p className="truncate text-xs text-zinc-500">
-                {venue.last_scraped_at
-                  ? `Last checked ${new Date(venue.last_scraped_at).toLocaleDateString()}`
-                  : "Never checked"}
+                {venue.url
+                  ? venue.last_scraped_at
+                    ? `Last checked ${new Date(venue.last_scraped_at).toLocaleDateString()}`
+                    : "Never checked"
+                  : "Found while scraping · no site to check"}
                 {venue.lat === null && " · location unknown"}
               </p>
             </div>
+
             <div className="flex flex-shrink-0 gap-2">
-              <button
-                onClick={() => handleRefresh(venue.id)}
-                disabled={busyId === venue.id}
-                className="rounded-full bg-zinc-100 px-3 py-1 text-xs font-medium text-zinc-700 disabled:opacity-50 dark:bg-zinc-800 dark:text-zinc-300"
-              >
-                {busyId === venue.id ? "Checking…" : "Refresh"}
-              </button>
+              {venue.url && (
+                <button
+                  onClick={() => handleRefresh(venue.id)}
+                  disabled={busyId === venue.id}
+                  className="rounded-full bg-zinc-100 px-3 py-1 text-xs font-medium text-zinc-700 disabled:opacity-50 dark:bg-zinc-800 dark:text-zinc-300"
+                >
+                  {busyId === venue.id ? "Checking…" : "Refresh"}
+                </button>
+              )}
               <button
                 onClick={() => handleDelete(venue.id)}
                 className="rounded-full bg-zinc-100 px-3 py-1 text-xs font-medium text-zinc-700 dark:bg-zinc-800 dark:text-zinc-300"
