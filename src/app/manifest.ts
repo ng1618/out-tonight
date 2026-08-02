@@ -14,10 +14,23 @@ export default function manifest(): MetadataRoute.Manifest {
       { src: "/icons/512", sizes: "512x512", type: "image/png", purpose: "any" },
       { src: "/icons/512", sizes: "512x512", type: "image/png", purpose: "maskable" },
     ],
+    // POST + multipart is required to receive shared *files*; a GET target can
+    // only carry text and URLs. One target handles both links and photos.
     share_target: {
-      action: "/share-target",
-      method: "GET",
-      params: { title: "title", text: "text", url: "url" },
+      action: "/api/share-target",
+      method: "POST",
+      enctype: "multipart/form-data",
+      params: {
+        title: "title",
+        text: "text",
+        url: "url",
+        files: [
+          {
+            name: "photo",
+            accept: ["image/jpeg", "image/png", "image/webp", "image/gif"],
+          },
+        ],
+      },
     },
   };
 }

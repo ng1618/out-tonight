@@ -123,7 +123,7 @@ export async function quickAddFromUrl(url: string): Promise<QuickAddResult> {
  * Known by name only — no URL to scrape — so they are geocoded once by name
  * and then behave like any other venue in the list.
  */
-async function ensureDiscoveredVenue(
+export async function ensureDiscoveredVenue(
   name: string
 ): Promise<{ id: number; name: string }> {
   const db = getDb();

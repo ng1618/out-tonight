@@ -42,6 +42,9 @@ yarn-error.log*
 *.db-shm
 *.db-wal
 
+# uploaded photos (raw sources)
+/data/uploads/
+
 # typescript
 *.tsbuildinfo
 next-env.d.ts

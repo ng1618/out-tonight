@@ -123,6 +123,43 @@ function init(db: Database.Database) {
     CREATE INDEX IF NOT EXISTS idx_events_start_time ON events(start_time);
     CREATE INDEX IF NOT EXISTS idx_events_status ON events(status);
 
+    -- Layer 1 of the three-layer model: what came in, never modified.
+    CREATE TABLE IF NOT EXISTS raw_sources (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      kind TEXT NOT NULL,
+      file_path TEXT,
+      mime_type TEXT,
+      sha256 TEXT UNIQUE,
+      source_url TEXT,
+      note TEXT,
+      created_at TEXT NOT NULL DEFAULT (datetime('now'))
+    );
+
+    -- Layer 2: what was read out of a raw source. Re-creatable at any time;
+    -- one raw source can yield many candidates (a magazine page is not one event).
+    CREATE TABLE IF NOT EXISTS extraction_candidates (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      raw_source_id INTEGER NOT NULL REFERENCES raw_sources(id) ON DELETE CASCADE,
+      title TEXT NOT NULL,
+      subtitle TEXT,
+      venue_name TEXT,
+      city TEXT,
+      start_date TEXT,
+      end_date TEXT,
+      start_time TEXT,
+      time_note TEXT,
+      price TEXT,
+      category TEXT,
+      confidence TEXT NOT NULL DEFAULT 'medium',
+      needs_review TEXT,
+      status TEXT NOT NULL DEFAULT 'pending',
+      event_id INTEGER REFERENCES events(id) ON DELETE SET NULL,
+      created_at TEXT NOT NULL DEFAULT (datetime('now'))
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_candidates_status ON extraction_candidates(status);
+    CREATE INDEX IF NOT EXISTS idx_candidates_raw_source ON extraction_candidates(raw_source_id);
+
     CREATE TABLE IF NOT EXISTS geocode_cache (
       query TEXT PRIMARY KEY,
       lat REAL,

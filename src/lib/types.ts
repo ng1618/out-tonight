@@ -40,6 +40,27 @@ export type SeriesRow = {
   created_at: string;
 };
 
+export type CandidateRow = {
+  id: number;
+  raw_source_id: number;
+  title: string;
+  subtitle: string | null;
+  venue_name: string | null;
+  city: string | null;
+  start_date: string | null;
+  end_date: string | null;
+  start_time: string | null;
+  time_note: string | null;
+  price: string | null;
+  category: string | null;
+  confidence: string;
+  /** JSON array of field names the extraction wasn't sure about. */
+  needs_review: string | null;
+  status: "pending" | "confirmed" | "discarded";
+  event_id: number | null;
+  created_at: string;
+};
+
 export type HomeLocationRow = {
   id: number;
   label: string;
