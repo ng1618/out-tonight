@@ -45,6 +45,9 @@ yarn-error.log*
 # uploaded photos (raw sources)
 /data/uploads/
 
+# planning docs — kept out of the repo, same as pen-round-sorter
+/Arbeitsdokument_*.md
+
 # typescript
 *.tsbuildinfo
 next-env.d.ts

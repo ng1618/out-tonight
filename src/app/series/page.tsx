@@ -1,17 +1,15 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
-import type { SeriesRow } from "@/lib/types";
+import type { SeriesRecord } from "@/lib/client/schema";
+import { addSeries, deleteSeries, listSeries, setSeriesFavorited } from "@/lib/client/store";
 
 export default function SeriesPage() {
-  const [series, setSeries] = useState<SeriesRow[]>([]);
+  const [series, setSeries] = useState<SeriesRecord[]>([]);
   const [name, setName] = useState("");
   const [matchPattern, setMatchPattern] = useState("");
 
-  const load = useCallback(async () => {
-    const res = await fetch("/api/series");
-    setSeries(await res.json());
-  }, []);
+  const load = useCallback(async () => setSeries(await listSeries()), []);
 
   useEffect(() => {
     load();
@@ -19,27 +17,9 @@ export default function SeriesPage() {
 
   async function handleAdd(e: React.FormEvent) {
     e.preventDefault();
-    await fetch("/api/series", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ name, matchPattern }),
-    });
+    await addSeries(name.trim(), matchPattern.trim());
     setName("");
     setMatchPattern("");
-    load();
-  }
-
-  async function toggleFavorited(s: SeriesRow) {
-    await fetch(`/api/series/${s.id}`, {
-      method: "PATCH",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ favorited: !s.favorited }),
-    });
-    load();
-  }
-
-  async function handleDelete(id: number) {
-    await fetch(`/api/series/${id}`, { method: "DELETE" });
     load();
   }
 
@@ -83,12 +63,15 @@ export default function SeriesPage() {
             <div className="min-w-0">
               <p className="truncate font-medium">{s.name}</p>
               <p className="truncate text-xs text-zinc-500">
-                matches &ldquo;{s.match_pattern}&rdquo;
+                matches &ldquo;{s.matchPattern}&rdquo;
               </p>
             </div>
             <div className="flex flex-shrink-0 gap-2">
               <button
-                onClick={() => toggleFavorited(s)}
+                onClick={async () => {
+                  await setSeriesFavorited(s.id, !s.favorited);
+                  load();
+                }}
                 className={`rounded-full px-3 py-1 text-xs font-medium ${
                   s.favorited
                     ? "bg-zinc-950 text-white dark:bg-zinc-50 dark:text-black"
@@ -98,7 +81,10 @@ export default function SeriesPage() {
                 {s.favorited ? "Favorited" : "Not favorited"}
               </button>
               <button
-                onClick={() => handleDelete(s.id)}
+                onClick={async () => {
+                  await deleteSeries(s.id);
+                  load();
+                }}
                 className="rounded-full bg-zinc-100 px-3 py-1 text-xs font-medium text-zinc-700 dark:bg-zinc-800 dark:text-zinc-300"
               >
                 Remove

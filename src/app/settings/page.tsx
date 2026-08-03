@@ -1,19 +1,31 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
-import PushSubscribeButton from "@/components/PushSubscribeButton";
-import type { HomeLocationRow } from "@/lib/types";
+import { storageEstimate } from "@/lib/client/db";
+import { buildExport, downloadExport } from "@/lib/client/export";
+import type { HomeLocationRecord } from "@/lib/client/schema";
+import {
+  addHomeLocation,
+  deleteHomeLocation,
+  listHomeLocations,
+  updateHomeRadius,
+} from "@/lib/client/store";
+
+type Summary = Awaited<ReturnType<typeof buildExport>>["summary"];
 
 export default function SettingsPage() {
-  const [homes, setHomes] = useState<HomeLocationRow[]>([]);
+  const [homes, setHomes] = useState<HomeLocationRecord[]>([]);
   const [label, setLabel] = useState("");
   const [place, setPlace] = useState("");
   const [radiusKm, setRadiusKm] = useState(25);
   const [message, setMessage] = useState<string | null>(null);
+  const [storage, setStorage] = useState({ usedMb: 0, quotaMb: 0 });
+  const [summary, setSummary] = useState<Summary | null>(null);
 
   const load = useCallback(async () => {
-    const res = await fetch("/api/home-locations");
-    setHomes(await res.json());
+    setHomes(await listHomeLocations());
+    setStorage(await storageEstimate());
+    setSummary((await buildExport()).summary);
   }, []);
 
   useEffect(() => {
@@ -23,32 +35,13 @@ export default function SettingsPage() {
   async function handleAdd(e: React.FormEvent) {
     e.preventDefault();
     setMessage(null);
-    const res = await fetch("/api/home-locations", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ label, place, radiusKm }),
-    });
-    const data = await res.json();
-    if (!res.ok) {
-      setMessage(data.error);
+    const added = await addHomeLocation(label.trim(), place.trim(), radiusKm);
+    if (!added) {
+      setMessage("Could not find that place (needs a connection the first time)");
       return;
     }
     setLabel("");
     setPlace("");
-    load();
-  }
-
-  async function updateRadius(id: number, value: number) {
-    await fetch(`/api/home-locations/${id}`, {
-      method: "PATCH",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ radiusKm: value }),
-    });
-    load();
-  }
-
-  async function handleDelete(id: number) {
-    await fetch(`/api/home-locations/${id}`, { method: "DELETE" });
     load();
   }
 
@@ -71,15 +64,21 @@ export default function SettingsPage() {
               <div className="flex items-center gap-2 text-xs text-zinc-500">
                 <input
                   type="number"
-                  defaultValue={home.radius_km}
-                  onBlur={(e) => updateRadius(home.id, Number(e.target.value))}
+                  defaultValue={home.radiusKm}
+                  onBlur={async (e) => {
+                    await updateHomeRadius(home.id, Number(e.target.value));
+                    load();
+                  }}
                   className="w-16 rounded border border-zinc-200 px-1 py-0.5 dark:border-zinc-800 dark:bg-zinc-900"
                 />
                 km radius
               </div>
             </div>
             <button
-              onClick={() => handleDelete(home.id)}
+              onClick={async () => {
+                await deleteHomeLocation(home.id);
+                load();
+              }}
               className="flex-shrink-0 rounded-full bg-zinc-100 px-3 py-1 text-xs font-medium text-zinc-700 dark:bg-zinc-800 dark:text-zinc-300"
             >
               Remove
@@ -98,7 +97,7 @@ export default function SettingsPage() {
         />
         <input
           required
-          placeholder="Place to geocode, e.g. Darmstadt, Germany"
+          placeholder="Place to look up, e.g. Darmstadt, Germany"
           value={place}
           onChange={(e) => setPlace(e.target.value)}
           className="rounded-lg border border-zinc-200 px-3 py-2 text-sm dark:border-zinc-800 dark:bg-zinc-900"
@@ -124,8 +123,38 @@ export default function SettingsPage() {
 
       <hr className="border-zinc-200 dark:border-zinc-800" />
 
-      <h2 className="text-lg font-semibold">Notifications</h2>
-      <PushSubscribeButton />
+      <h2 className="text-lg font-semibold">Field-test log</h2>
+      {summary && (
+        <dl className="grid grid-cols-2 gap-x-4 gap-y-1 text-sm">
+          <dt className="text-zinc-500">Photos scanned</dt>
+          <dd className="text-right">{summary.photos}</dd>
+          <dt className="text-zinc-500">Candidates found</dt>
+          <dd className="text-right">{summary.candidates}</dd>
+          <dt className="text-zinc-500">Confirmed / discarded</dt>
+          <dd className="text-right">
+            {summary.confirmed} / {summary.discarded}
+          </dd>
+          <dt className="text-zinc-500">Needed correction</dt>
+          <dd className="text-right">{summary.corrected}</dd>
+          <dt className="text-zinc-500">Marked going</dt>
+          <dd className="text-right">{summary.going}</dd>
+          <dt className="text-zinc-500">Storage used</dt>
+          <dd className="text-right">
+            {storage.usedMb} MB{storage.quotaMb ? ` / ${storage.quotaMb} MB` : ""}
+          </dd>
+        </dl>
+      )}
+
+      <button
+        onClick={downloadExport}
+        className="rounded-lg bg-zinc-100 px-4 py-3 text-sm font-medium text-zinc-700 dark:bg-zinc-800 dark:text-zinc-300"
+      >
+        Export log as JSON
+      </button>
+      <p className="text-xs text-zinc-500">
+        Photos stay on the phone; the export carries the OCR results, your
+        corrections, and timings.
+      </p>
     </div>
   );
 }

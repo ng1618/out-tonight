@@ -1,90 +1,75 @@
 "use client";
 
+import Link from "next/link";
 import { useCallback, useEffect, useRef, useState } from "react";
-import CandidateCard from "@/components/CandidateCard";
-import type { CandidateRow } from "@/lib/types";
+import { getDb } from "@/lib/client/db";
+import { warmUpOcr, type ProgressUpdate } from "@/lib/client/ocr";
+import { listPhotos, scanPhoto } from "@/lib/client/scan";
+import type { PhotoRecord } from "@/lib/client/schema";
 
-type Group = { rawSourceId: number; candidates: CandidateRow[] };
-
-function groupBySource(rows: CandidateRow[]): Group[] {
-  const map = new Map<number, CandidateRow[]>();
-  for (const row of rows) {
-    const list = map.get(row.raw_source_id) ?? [];
-    list.push(row);
-    map.set(row.raw_source_id, list);
-  }
-  return [...map.entries()]
-    .sort((a, b) => b[0] - a[0])
-    .map(([rawSourceId, candidates]) => ({ rawSourceId, candidates }));
-}
+type Row = { photo: PhotoRecord; pending: number; total: number; url: string };
 
 export default function PhotosPage() {
-  const [groups, setGroups] = useState<Group[]>([]);
-  const [status, setStatus] = useState<"idle" | "uploading">("idle");
+  const [rows, setRows] = useState<Row[]>([]);
+  const [progress, setProgress] = useState<ProgressUpdate | null>(null);
   const [message, setMessage] = useState<string | null>(null);
+  const [backend, setBackend] = useState<string | null>(null);
   const fileInput = useRef<HTMLInputElement>(null);
 
   const load = useCallback(async () => {
-    const res = await fetch("/api/photos");
-    setGroups(groupBySource(await res.json()));
+    const db = await getDb();
+    const photos = await listPhotos();
+    const next: Row[] = [];
+    for (const photo of photos) {
+      const candidates = await db.getAllFromIndex("candidates", "byPhoto", photo.id);
+      next.push({
+        photo,
+        pending: candidates.filter((c) => c.status === "pending").length,
+        total: candidates.length,
+        url: URL.createObjectURL(photo.blob),
+      });
+    }
+    setRows((old) => {
+      old.forEach((r) => URL.revokeObjectURL(r.url));
+      return next;
+    });
   }, []);
 
   useEffect(() => {
     load();
+    // Load the model up front so the first scan isn't also paying for it.
+    warmUpOcr().then(setBackend).catch(() => setBackend("unavailable"));
   }, [load]);
 
   async function handleFile(file: File) {
-    setStatus("uploading");
-    setMessage("Reading the photo…");
-
-    const body = new FormData();
-    body.append("photo", file);
-
-    const res = await fetch("/api/photos", { method: "POST", body });
-    const data = await res.json();
-    setStatus("idle");
-
-    if (!res.ok) {
+    setMessage(null);
+    setProgress({ index: 0, total: 8, label: "preparing", bestScore: 0 });
+    try {
+      const result = await scanPhoto(file, setProgress);
       setMessage(
-        data.status === "refused"
-          ? "That image was declined by the safety filter."
-          : (data.error ?? "Extraction failed — the photo was kept, try again later.")
+        result.candidateCount === 0
+          ? `Nothing readable (${(result.totalMs / 1000).toFixed(1)}s). Open it to type the event in.`
+          : `Found ${result.candidateCount} in ${(result.totalMs / 1000).toFixed(1)}s — best ${result.winner}`
       );
-      return;
+      await load();
+    } catch (err) {
+      setMessage(err instanceof Error ? err.message : "Scan failed");
+    } finally {
+      setProgress(null);
     }
-
-    const found = data.candidates?.length ?? 0;
-    setMessage(
-      data.status === "duplicate"
-        ? `Already read this photo — ${found} event${found === 1 ? "" : "s"} from it below.`
-        : found === 0
-          ? "No events found in that image."
-          : `Found ${found} event${found === 1 ? "" : "s"}.`
-    );
-    load();
-  }
-
-  function handleResolved(id: number) {
-    setGroups((prev) =>
-      prev
-        .map((g) => ({ ...g, candidates: g.candidates.filter((c) => c.id !== id) }))
-        .filter((g) => g.candidates.length > 0)
-    );
   }
 
   return (
     <div className="flex flex-1 flex-col gap-4 p-4">
-      <h1 className="text-lg font-semibold">Photos</h1>
-      <p className="text-sm text-zinc-500">
-        Photograph a poster or a listings page. Everything found is shown for you to
-        confirm — one photo often holds several events, and some of them aren&apos;t
-        events at all.
-      </p>
+      <div className="flex items-baseline justify-between">
+        <h1 className="text-lg font-semibold">Photos</h1>
+        {backend && <span className="text-xs text-zinc-500">OCR: {backend}</span>}
+      </div>
 
       <input
         ref={fileInput}
         type="file"
-        accept="image/jpeg,image/png,image/webp,image/gif"
+        accept="image/jpeg,image/png,image/webp"
         className="hidden"
         onChange={(e) => {
           const file = e.target.files?.[0];
@@ -94,42 +79,54 @@ export default function PhotosPage() {
       />
       <button
         onClick={() => fileInput.current?.click()}
-        disabled={status === "uploading"}
+        disabled={progress !== null}
         className="rounded-lg bg-zinc-950 px-4 py-3 text-sm font-medium text-white disabled:opacity-50 dark:bg-zinc-50 dark:text-black"
       >
-        {status === "uploading" ? "Reading…" : "Add a photo"}
+        {progress ? "Reading…" : "Add a photo"}
       </button>
+
+      {progress && (
+        <div className="flex flex-col gap-2 rounded-xl border border-zinc-200 p-3 dark:border-zinc-800">
+          <p className="text-sm">
+            Trying variant {progress.index} of {progress.total} — {progress.label}
+          </p>
+          <div className="h-1.5 w-full overflow-hidden rounded-full bg-zinc-200 dark:bg-zinc-800">
+            <div
+              className="h-full bg-zinc-950 transition-all dark:bg-zinc-50"
+              style={{ width: `${(progress.index / progress.total) * 100}%` }}
+            />
+          </div>
+          <p className="text-xs text-zinc-500">
+            Every rotation is tried and the clearest read wins — this takes a moment.
+          </p>
+        </div>
+      )}
 
       {message && <p className="text-sm text-zinc-500">{message}</p>}
 
-      {groups.length === 0 && status === "idle" && (
-        <p className="text-sm text-zinc-500">Nothing waiting for review.</p>
+      {rows.length === 0 && !progress && (
+        <p className="text-sm text-zinc-500">No photos yet.</p>
       )}
 
-      {groups.map((group) => (
-        <div key={group.rawSourceId} className="flex flex-col gap-3">
-          <div className="flex items-center gap-3">
+      <div className="grid grid-cols-2 gap-3">
+        {rows.map((row) => (
+          <Link
+            key={row.photo.id}
+            href={`/photos/${row.photo.id}`}
+            className="flex flex-col gap-1 rounded-xl border border-zinc-200 p-2 dark:border-zinc-800"
+          >
             {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img
-              src={`/api/photos/${group.rawSourceId}/image`}
-              alt=""
-              className="h-24 w-24 flex-shrink-0 rounded-lg object-cover"
-            />
-            <p className="text-sm text-zinc-500">
-              {group.candidates.length} event
-              {group.candidates.length === 1 ? "" : "s"} found in this photo
+            <img src={row.url} alt="" className="aspect-square w-full rounded-lg object-cover" />
+            <p className="text-xs text-zinc-500">
+              {row.pending > 0
+                ? `${row.pending} to review`
+                : row.total > 0
+                  ? `${row.total} done`
+                  : "nothing found"}
             </p>
-          </div>
-
-          {group.candidates.map((candidate) => (
-            <CandidateCard
-              key={candidate.id}
-              candidate={candidate}
-              onResolved={handleResolved}
-            />
-          ))}
-        </div>
-      ))}
+          </Link>
+        ))}
+      </div>
     </div>
   );
 }

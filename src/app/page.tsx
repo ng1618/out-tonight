@@ -3,25 +3,23 @@
 import { useCallback, useEffect, useState } from "react";
 import EventCard from "@/components/EventCard";
 import QuickAddForm from "@/components/QuickAddForm";
-import type { EventRow } from "@/lib/types";
+import type { EventRecord } from "@/lib/client/schema";
+import { listEvents, setEventStatus, type FeedRange } from "@/lib/client/store";
 
-const RANGES = [
+const RANGES: { key: FeedRange; label: string }[] = [
   { key: "tonight", label: "Tonight" },
   { key: "weekend", label: "Weekend" },
   { key: "all", label: "All" },
-] as const;
+];
 
 export default function FeedPage() {
-  const [range, setRange] = useState<(typeof RANGES)[number]["key"]>("tonight");
-  const [events, setEvents] = useState<EventRow[]>([]);
+  const [range, setRange] = useState<FeedRange>("tonight");
+  const [events, setEvents] = useState<EventRecord[]>([]);
   const [loading, setLoading] = useState(true);
 
   const load = useCallback(async () => {
     setLoading(true);
-    const params = range === "all" ? "" : `?range=${range}`;
-    const res = await fetch(`/api/events${params}`);
-    const data = await res.json();
-    setEvents(data);
+    setEvents(await listEvents(range));
     setLoading(false);
   }, [range]);
 
@@ -29,17 +27,13 @@ export default function FeedPage() {
     load();
   }, [load]);
 
-  async function handleStatusChange(id: number, status: EventRow["status"]) {
+  async function handleStatusChange(id: number, status: EventRecord["status"]) {
     setEvents((prev) =>
       status === "dismissed"
         ? prev.filter((e) => e.id !== id)
         : prev.map((e) => (e.id === id ? { ...e, status } : e))
     );
-    await fetch(`/api/events/${id}`, {
-      method: "PATCH",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ status }),
-    });
+    await setEventStatus(id, status);
   }
 
   return (
