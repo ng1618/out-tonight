@@ -61,6 +61,32 @@ function enhance(canvas: OffscreenCanvas): OffscreenCanvas {
   return canvas;
 }
 
+/**
+ * Cuts the chosen region out of the original. The source blob is never
+ * modified — only this derived image goes to OCR, so a crop can be redone.
+ */
+export async function cropImage(
+  source: Blob,
+  rect: { x: number; y: number; width: number; height: number }
+): Promise<Blob> {
+  const bitmap = await toBitmap(source);
+  const canvas = new OffscreenCanvas(rect.width, rect.height);
+  const ctx = canvas.getContext("2d")!;
+  ctx.drawImage(
+    bitmap,
+    rect.x,
+    rect.y,
+    rect.width,
+    rect.height,
+    0,
+    0,
+    rect.width,
+    rect.height
+  );
+  bitmap.close();
+  return canvas.convertToBlob({ type: "image/jpeg", quality: 0.95 });
+}
+
 export async function buildVariants(source: Blob): Promise<Variant[]> {
   const bitmap = await toBitmap(source);
   const variants: Variant[] = [];

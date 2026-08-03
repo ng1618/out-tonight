@@ -2,15 +2,17 @@
 
 import Link from "next/link";
 import { useCallback, useEffect, useRef, useState } from "react";
+import CropBox from "@/components/CropBox";
 import { getDb } from "@/lib/client/db";
 import { warmUpOcr, type ProgressUpdate } from "@/lib/client/ocr";
 import { listPhotos, scanPhoto } from "@/lib/client/scan";
-import type { PhotoRecord } from "@/lib/client/schema";
+import type { CropRect, PhotoRecord } from "@/lib/client/schema";
 
 type Row = { photo: PhotoRecord; pending: number; total: number; url: string };
 
 export default function PhotosPage() {
   const [rows, setRows] = useState<Row[]>([]);
+  const [pendingFile, setPendingFile] = useState<File | null>(null);
   const [progress, setProgress] = useState<ProgressUpdate | null>(null);
   const [message, setMessage] = useState<string | null>(null);
   const [backend, setBackend] = useState<string | null>(null);
@@ -37,20 +39,22 @@ export default function PhotosPage() {
 
   useEffect(() => {
     load();
-    // Load the model up front so the first scan isn't also paying for it.
-    warmUpOcr().then(setBackend).catch(() => setBackend("unavailable"));
+    warmUpOcr()
+      .then(setBackend)
+      .catch(() => setBackend("unavailable"));
   }, [load]);
 
-  async function handleFile(file: File) {
+  async function run(file: File, cropRect: CropRect | null) {
     setMessage(null);
     setProgress({ index: 0, total: 8, label: "preparing", bestScore: 0 });
     try {
-      const result = await scanPhoto(file, setProgress);
+      const result = await scanPhoto(file, setProgress, cropRect);
       setMessage(
         result.candidateCount === 0
-          ? `Nothing readable (${(result.totalMs / 1000).toFixed(1)}s). Open it to type the event in.`
+          ? `Nothing readable (${(result.totalMs / 1000).toFixed(1)}s). Open it to crop tighter or type it in.`
           : `Found ${result.candidateCount} in ${(result.totalMs / 1000).toFixed(1)}s — best ${result.winner}`
       );
+      setPendingFile(null);
       await load();
     } catch (err) {
       setMessage(err instanceof Error ? err.message : "Scan failed");
@@ -73,17 +77,30 @@ export default function PhotosPage() {
         className="hidden"
         onChange={(e) => {
           const file = e.target.files?.[0];
-          if (file) handleFile(file);
+          if (file) {
+            setPendingFile(file);
+            setMessage(null);
+          }
           e.target.value = "";
         }}
       />
-      <button
-        onClick={() => fileInput.current?.click()}
-        disabled={progress !== null}
-        className="rounded-lg bg-zinc-950 px-4 py-3 text-sm font-medium text-white disabled:opacity-50 dark:bg-zinc-50 dark:text-black"
-      >
-        {progress ? "Reading…" : "Add a photo"}
-      </button>
+
+      {pendingFile ? (
+        <CropBox
+          blob={pendingFile}
+          busy={progress !== null}
+          onApply={(rect) => run(pendingFile, rect)}
+          onSkip={() => run(pendingFile, null)}
+        />
+      ) : (
+        <button
+          onClick={() => fileInput.current?.click()}
+          disabled={progress !== null}
+          className="rounded-lg bg-zinc-950 px-4 py-3 text-sm font-medium text-white disabled:opacity-50 dark:bg-zinc-50 dark:text-black"
+        >
+          {progress ? "Reading…" : "Add a photo"}
+        </button>
+      )}
 
       {progress && (
         <div className="flex flex-col gap-2 rounded-xl border border-zinc-200 p-3 dark:border-zinc-800">
@@ -104,7 +121,7 @@ export default function PhotosPage() {
 
       {message && <p className="text-sm text-zinc-500">{message}</p>}
 
-      {rows.length === 0 && !progress && (
+      {rows.length === 0 && !progress && !pendingFile && (
         <p className="text-sm text-zinc-500">No photos yet.</p>
       )}
 
@@ -116,7 +133,11 @@ export default function PhotosPage() {
             className="flex flex-col gap-1 rounded-xl border border-zinc-200 p-2 dark:border-zinc-800"
           >
             {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img src={row.url} alt="" className="aspect-square w-full rounded-lg object-cover" />
+            <img
+              src={row.url}
+              alt=""
+              className="aspect-square w-full rounded-lg object-cover"
+            />
             <p className="text-xs text-zinc-500">
               {row.pending > 0
                 ? `${row.pending} to review`

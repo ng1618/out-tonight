@@ -3,10 +3,18 @@
 import Link from "next/link";
 import { useParams } from "next/navigation";
 import { useCallback, useEffect, useState } from "react";
+import BulkVenue from "@/components/BulkVenue";
 import CandidateCard from "@/components/CandidateCard";
+import CropBox from "@/components/CropBox";
 import PhotoWithBoxes from "@/components/PhotoWithBoxes";
-import { getPhoto, getRunForPhoto, deletePhoto } from "@/lib/client/scan";
-import type { CandidateRecord, OcrRunRecord, PhotoRecord } from "@/lib/client/schema";
+import { getPhoto, getRunForPhoto, deletePhoto, rescanPhoto } from "@/lib/client/scan";
+import type { ProgressUpdate } from "@/lib/client/ocr";
+import type {
+  CandidateRecord,
+  CropRect,
+  OcrRunRecord,
+  PhotoRecord,
+} from "@/lib/client/schema";
 import { listCandidatesForPhoto } from "@/lib/client/store";
 
 export default function PhotoDetailPage() {
@@ -18,6 +26,8 @@ export default function PhotoDetailPage() {
   const [candidates, setCandidates] = useState<CandidateRecord[]>([]);
   const [showBoxes, setShowBoxes] = useState(true);
   const [showText, setShowText] = useState(false);
+  const [recropping, setRecropping] = useState(false);
+  const [progress, setProgress] = useState<ProgressUpdate | null>(null);
 
   const load = useCallback(async () => {
     const [p, r, c] = await Promise.all([
@@ -33,6 +43,17 @@ export default function PhotoDetailPage() {
   useEffect(() => {
     load();
   }, [load]);
+
+  async function handleRecrop(rect: CropRect | null) {
+    setProgress({ index: 0, total: 8, label: "preparing", bestScore: 0 });
+    try {
+      await rescanPhoto(photoId, rect, setProgress);
+      setRecropping(false);
+      await load();
+    } finally {
+      setProgress(null);
+    }
+  }
 
   if (!photo) {
     return (
@@ -65,9 +86,33 @@ export default function PhotoDetailPage() {
         </button>
       </div>
 
-      <PhotoWithBoxes blob={photo.blob} lines={run?.lines ?? []} showBoxes={showBoxes} />
+      {recropping ? (
+        <CropBox
+          blob={photo.blob}
+          busy={progress !== null}
+          onApply={(rect) => handleRecrop(rect)}
+          onSkip={() => handleRecrop(null)}
+        />
+      ) : (
+        <PhotoWithBoxes blob={photo.blob} lines={run?.lines ?? []} showBoxes={showBoxes} />
+      )}
 
-      {run && (
+      {progress && (
+        <p className="text-sm text-zinc-500">
+          Re-reading — variant {progress.index} of {progress.total} ({progress.label})
+        </p>
+      )}
+
+      {!recropping && (
+        <button
+          onClick={() => setRecropping(true)}
+          className="rounded-lg bg-zinc-100 px-4 py-2 text-sm font-medium text-zinc-700 dark:bg-zinc-800 dark:text-zinc-300"
+        >
+          {photo.cropRect ? "Adjust crop and read again" : "Crop and read again"}
+        </button>
+      )}
+
+      {run && !recropping && (
         <div className="flex flex-col gap-2 text-xs text-zinc-500">
           <div className="flex flex-wrap gap-x-3 gap-y-1">
             <span>best: {run.winner}</span>
@@ -104,9 +149,14 @@ export default function PhotoDetailPage() {
         </p>
       )}
 
+      {!recropping && (
+        <BulkVenue photoId={photoId} count={pending.length} onApplied={load} />
+      )}
+
       {pending.map((candidate) => (
+        // Keyed on correctedAt so a bulk venue change re-seeds the card's draft.
         <CandidateCard
-          key={candidate.id}
+          key={`${candidate.id}-${candidate.correctedAt ?? ""}`}
           candidate={candidate}
           onResolved={() => load()}
         />

@@ -38,13 +38,11 @@ export default function RootLayout({
       lang="en"
       className={`${geistSans.variable} ${geistMono.variable} h-full antialiased`}
     >
-      <body className="flex min-h-full flex-col bg-zinc-50 dark:bg-black">
-        <div className="mx-auto flex w-full max-w-lg flex-1 flex-col">
-          {children}
-        </div>
-        <div className="mx-auto w-full max-w-lg">
-          <NavBar />
-        </div>
+      {/* pb-24 reserves room for the fixed nav so the last card isn't hidden
+          behind it; dvh tracks mobile browser chrome as it shows and hides. */}
+      <body className="min-h-dvh bg-zinc-50 pb-24 dark:bg-black">
+        <div className="mx-auto flex w-full max-w-lg flex-col">{children}</div>
+        <NavBar />
       </body>
     </html>
   );

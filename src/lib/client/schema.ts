@@ -60,12 +60,17 @@ export type HomeLocationRecord = {
   radiusKm: number;
 };
 
+export type CropRect = { x: number; y: number; width: number; height: number };
+
 export type PhotoRecord = {
   id: number;
+  /** Always the untouched original, so a bad crop can be redone. */
   blob: Blob;
   width: number;
   height: number;
   bytes: number;
+  /** Region actually sent to OCR, in original-image pixels. Null = whole photo. */
+  cropRect: CropRect | null;
   createdAt: string;
 };
 

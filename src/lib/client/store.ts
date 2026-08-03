@@ -412,6 +412,34 @@ export async function discardCandidate(
   });
 }
 
+/**
+ * A programme page is one venue repeated down the column, so the venue is set
+ * once for the whole photo rather than retyped per event. Only unreviewed
+ * candidates are touched — anything already confirmed keeps what you gave it.
+ */
+export async function setVenueForPendingCandidates(
+  photoId: number,
+  venueName: string | null,
+  city: string | null
+): Promise<number> {
+  const db = await getDb();
+  const candidates = await db.getAllFromIndex("candidates", "byPhoto", photoId);
+  const pending = candidates.filter((c) => c.status === "pending");
+
+  const tx = db.transaction("candidates", "readwrite");
+  await Promise.all(
+    pending.map((c) =>
+      tx.store.put({
+        ...c,
+        current: { ...c.current, venueName, city },
+        correctedAt: new Date().toISOString(),
+      })
+    )
+  );
+  await tx.done;
+  return pending.length;
+}
+
 export async function listPendingCandidates() {
   const db = await getDb();
   return db.getAllFromIndex("candidates", "byStatus", "pending");
