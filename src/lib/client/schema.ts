@@ -130,7 +130,13 @@ export type CandidateRecord = {
   yearPrinted: boolean;
   weekdayMatches: boolean | null;
   needsReview: string[];
-  status: "pending" | "confirmed" | "discarded";
+  /**
+   * "uninteresting" and "notAnEvent" must stay distinct: the first means the
+   * extraction was right and you simply didn't want it, the second means it
+   * produced something that was never an event. Merging them would score
+   * correct reads as failures. ("discarded" is the pre-split legacy value.)
+   */
+  status: "pending" | "confirmed" | "uninteresting" | "notAnEvent" | "discarded";
   eventId: number | null;
   correctedAt: string | null;
   createdAt: string;

@@ -399,6 +399,7 @@ export async function confirmCandidate(
 
 export async function discardCandidate(
   candidateId: number,
+  reason: "uninteresting" | "notAnEvent",
   corrected?: CandidateFields
 ): Promise<void> {
   const db = await getDb();
@@ -407,7 +408,7 @@ export async function discardCandidate(
   await db.put("candidates", {
     ...candidate,
     current: corrected ?? candidate.current,
-    status: "discarded",
+    status: reason,
     correctedAt: now(),
   });
 }

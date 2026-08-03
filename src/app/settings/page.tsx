@@ -130,10 +130,12 @@ export default function SettingsPage() {
           <dd className="text-right">{summary.photos}</dd>
           <dt className="text-zinc-500">Candidates found</dt>
           <dd className="text-right">{summary.candidates}</dd>
-          <dt className="text-zinc-500">Confirmed / discarded</dt>
-          <dd className="text-right">
-            {summary.confirmed} / {summary.discarded}
-          </dd>
+          <dt className="text-zinc-500">Added to feed</dt>
+          <dd className="text-right">{summary.confirmed}</dd>
+          <dt className="text-zinc-500">Real, not interesting</dt>
+          <dd className="text-right">{summary.uninteresting}</dd>
+          <dt className="text-zinc-500">Not an event (misread)</dt>
+          <dd className="text-right">{summary.notAnEvent}</dd>
           <dt className="text-zinc-500">Needed correction</dt>
           <dd className="text-right">{summary.corrected}</dd>
           <dt className="text-zinc-500">Marked going</dt>

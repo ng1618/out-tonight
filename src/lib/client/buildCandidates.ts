@@ -1,5 +1,6 @@
 "use client";
 
+import { detectCategory } from "../categories";
 import { parseGermanDates, parseGermanPrice, parseGermanTimes } from "../parseGerman";
 import type { CandidateFields, OcrLineRecord } from "./schema";
 
@@ -50,22 +51,24 @@ export function buildCandidates(
       .filter((l) => l !== anchor && sameRow(anchor, l) && l.box.x >= anchor.box.x)
       .sort((a, b) => a.box.x - b.box.x);
 
-    // Only look below when the row itself carried nothing, and stop well before
-    // the next row — otherwise the following event's date becomes this title.
-    const below =
-      rowMates.length > 0
-        ? []
-        : decorated
-            .filter(
-              (l) =>
-                l.box.y > anchor.box.y &&
-                l.box.y < anchor.bottom + anchor.box.height * 0.9 &&
-                Math.abs(l.box.x - anchor.box.x) < Math.max(anchor.box.width, l.box.width)
-            )
-            .sort((a, b) => a.box.y - b.box.y);
+    // Lines just below the date, stopping short of the next row. On these
+    // programmes the category label ("FESTIVAL", "KONZERT") sits here on its
+    // own line, so it must be read even when the title was found to the right.
+    const below = decorated
+      .filter(
+        (l) =>
+          l.box.y > anchor.box.y &&
+          l.box.y < anchor.bottom + anchor.box.height * 1.2 &&
+          Math.abs(l.box.x - anchor.box.x) < Math.max(anchor.box.width, l.box.width) * 2 &&
+          parseGermanDates(l.text, contextDate).length === 0
+      )
+      .sort((a, b) => a.box.y - b.box.y);
 
-    const cluster = [...rowMates, ...below];
-    const clusterText = [anchor.text, ...cluster.map((l) => l.text)].join(" ");
+    // Titles only ever come from the same row, or from below when the row was
+    // empty — a wider net here is what pulled in the neighbouring column.
+    const cluster = rowMates.length > 0 ? rowMates : below;
+    const contextText = [anchor.text, ...rowMates.map((l) => l.text), ...below.map((l) => l.text)].join(" ");
+    const clusterText = contextText;
 
     // A line that is itself a date is never the title — that mistake turns the
     // next programme row's date into this event's name. Month headings
@@ -90,11 +93,14 @@ export function buildCandidates(
       const times = parseGermanTimes(clusterText, contextDate);
       const price = parseGermanPrice(clusterText);
 
+      const category = detectCategory(contextText);
+
       const needsReview: string[] = [];
       if (!date.yearPrinted) needsReview.push("startDate");
       if (date.weekdayMatches === false) needsReview.push("startDate");
       if (!titleLine) needsReview.push("title");
       if (times.length === 0) needsReview.push("startTime");
+      if (!category) needsReview.push("category");
 
       candidates.push({
         extracted: {
@@ -106,7 +112,7 @@ export function buildCandidates(
           startTime: times[0]?.time ?? null,
           timeNote: times[0]?.note ?? null,
           price,
-          category: null,
+          category,
         },
         yearPrinted: date.yearPrinted,
         weekdayMatches: date.weekdayMatches,

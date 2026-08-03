@@ -49,7 +49,12 @@ export async function buildExport() {
       photos: photos.length,
       candidates: candidates.length,
       confirmed: candidates.filter((c) => c.status === "confirmed").length,
-      discarded: candidates.filter((c) => c.status === "discarded").length,
+      // A real event you didn't want — the extraction was correct.
+      uninteresting: candidates.filter((c) => c.status === "uninteresting").length,
+      // Never an event — the extraction was wrong. Only this counts as a miss.
+      notAnEvent: candidates.filter(
+        (c) => c.status === "notAnEvent" || c.status === "discarded"
+      ).length,
       pending: candidates.filter((c) => c.status === "pending").length,
       corrected: candidates.filter(
         (c) => Object.keys(diffFields(c.extracted, c.current)).length > 0
@@ -57,6 +62,23 @@ export async function buildExport() {
       events: events.length,
       going: events.filter((e) => e.status === "going").length,
     },
+    /**
+     * Share of reviewed candidates that were genuine events, however
+     * interesting. This is the number that says whether extraction works —
+     * taste is a separate question and is deliberately excluded.
+     */
+    extractionAccuracy: (() => {
+      const reviewed = candidates.filter((c) => c.status !== "pending");
+      if (reviewed.length === 0) return null;
+      const real = reviewed.filter(
+        (c) => c.status === "confirmed" || c.status === "uninteresting"
+      ).length;
+      return {
+        reviewed: reviewed.length,
+        wereRealEvents: real,
+        percent: Math.round((real / reviewed.length) * 100),
+      };
+    })(),
     photos: photos.map((p) => ({
       id: p.id,
       width: p.width,

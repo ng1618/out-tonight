@@ -174,7 +174,11 @@ export default function PhotoDetailPage() {
             >
               <span className="min-w-0 truncate">{c.current.title}</span>
               <span className="flex-shrink-0 text-xs text-zinc-500">
-                {c.status === "confirmed" ? "in feed" : "discarded"}
+                {c.status === "confirmed"
+                  ? "in feed"
+                  : c.status === "uninteresting"
+                    ? "not interesting"
+                    : "not an event"}
               </span>
             </div>
           ))}
