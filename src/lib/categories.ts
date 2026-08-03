@@ -57,24 +57,56 @@ const HINTS: [RegExp, Category][] = [
 /** Printed labels, longest first so "KLASSIK & OPER" wins over "OPER". */
 const PRINTED = [...CATEGORIES].sort((a, b) => b.length - a.length);
 
-/**
- * Local programmes print the category next to the date — that label is the
- * answer, so look for it before guessing from the title. Falls back to keyword
- * hints, and to null rather than a wrong guess.
- */
-export function detectCategory(text: string): Category | null {
-  const haystack = text.toUpperCase();
+export type CategoryFinding = {
+  category: Category;
+  /**
+   * "printed" — a category label was actually on the page, so it is a fact.
+   * "guessed" — inferred from wording, so it is a suggestion to accept or not.
+   */
+  source: "printed" | "guessed";
+  /** The line the decision came from, so the guess can be judged. */
+  evidence: string;
+};
 
+function printedIn(text: string): Category | null {
+  const haystack = text.toUpperCase();
   for (const category of PRINTED) {
     // "KONZERT: ROCK" and "KONZERT" both count; the ampersand forms are matched
     // loosely because OCR often drops the "&".
     const needle = category.replace(/\s*&\s*/g, ".{0,3}");
     if (new RegExp(`\\b${needle}\\b`).test(haystack)) return category;
   }
+  return null;
+}
 
+function guessedIn(text: string): Category | null {
   for (const [pattern, category] of HINTS) {
     if (pattern.test(text)) return category;
   }
+  return null;
+}
+
+/**
+ * Looks across the individual lines rather than one merged blob, so the result
+ * can name the line it came from. Every line is checked for a printed label
+ * first — a label anywhere beats a guess anywhere, because a guess derived
+ * from a band name shouldn't outrank the word the programme actually printed.
+ */
+export function findCategory(lines: string[]): CategoryFinding | null {
+  for (const line of lines) {
+    const category = printedIn(line);
+    if (category) return { category, source: "printed", evidence: line.trim() };
+  }
+
+  for (const line of lines) {
+    const category = guessedIn(line);
+    if (category) return { category, source: "guessed", evidence: line.trim() };
+  }
 
   return null;
+}
+
+/** Convenience wrapper for a single blob of text. */
+export function detectCategory(text: string): Category | null {
+  return findCategory([text])?.category ?? null;
 }

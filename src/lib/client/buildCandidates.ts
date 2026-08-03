@@ -1,6 +1,6 @@
 "use client";
 
-import { detectCategory } from "../categories";
+import { findCategory } from "../categories";
 import { parseGermanDates, parseGermanPrice, parseGermanTimes } from "../parseGerman";
 import type { CandidateFields, OcrLineRecord } from "./schema";
 
@@ -8,6 +8,9 @@ export type BuiltCandidate = {
   extracted: CandidateFields;
   yearPrinted: boolean;
   weekdayMatches: boolean | null;
+  categorySource: "printed" | "guessed" | null;
+  categoryEvidence: string | null;
+  categorySuggestion: string | null;
   needsReview: string[];
 };
 
@@ -93,7 +96,16 @@ export function buildCandidates(
       const times = parseGermanTimes(clusterText, contextDate);
       const price = parseGermanPrice(clusterText);
 
-      const category = detectCategory(contextText);
+      // Checked line by line so the result can point at the box it came from.
+      const found = findCategory([
+        ...below.map((l) => l.text),
+        ...rowMates.map((l) => l.text),
+        anchor.text,
+      ]);
+
+      // Only a label actually printed on the page is filled in; anything
+      // inferred is offered as a suggestion for you to accept or overrule.
+      const category = found?.source === "printed" ? found.category : null;
 
       const needsReview: string[] = [];
       if (!date.yearPrinted) needsReview.push("startDate");
@@ -116,6 +128,9 @@ export function buildCandidates(
         },
         yearPrinted: date.yearPrinted,
         weekdayMatches: date.weekdayMatches,
+        categorySource: found?.source ?? null,
+        categoryEvidence: found?.evidence ?? null,
+        categorySuggestion: found?.source === "guessed" ? found.category : null,
         needsReview: [...new Set(needsReview)],
       });
     }

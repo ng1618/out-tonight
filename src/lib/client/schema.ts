@@ -129,6 +129,12 @@ export type CandidateRecord = {
   current: CandidateFields;
   yearPrinted: boolean;
   weekdayMatches: boolean | null;
+  /** Where the category came from — a printed label is filled in, a guess is only offered. */
+  categorySource: "printed" | "guessed" | null;
+  /** The line the category was read or inferred from, so a guess can be judged. */
+  categoryEvidence: string | null;
+  /** Offered but not applied when the category was only inferred. */
+  categorySuggestion: string | null;
   needsReview: string[];
   /**
    * "uninteresting" and "notAnEvent" must stay distinct: the first means the

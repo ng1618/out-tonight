@@ -95,7 +95,12 @@ export default function CandidateCard({
       <div className="grid grid-cols-2 gap-2">
         {field("price", "Price")}
         <label className="flex flex-col gap-1">
-          <span className="text-xs text-zinc-500">Category</span>
+          <span className="text-xs text-zinc-500">
+            Category
+            {candidate.categorySource === "printed" && (
+              <span className="text-emerald-600 dark:text-emerald-500"> · on the page</span>
+            )}
+          </span>
           <select
             value={draft.category ?? ""}
             onChange={(e) => setDraft({ ...draft, category: e.target.value || null })}
@@ -110,6 +115,33 @@ export default function CandidateCard({
           </select>
         </label>
       </div>
+
+      {/* A guess is offered rather than applied: nothing on the page said this,
+          so it needs a deliberate tap. The line it came from is shown so the
+          suggestion can be judged instead of trusted. */}
+      {candidate.categorySuggestion && !draft.category && (
+        <div className="flex items-center gap-2 rounded-lg bg-amber-50 px-3 py-2 dark:bg-amber-950/40">
+          <div className="min-w-0 flex-1">
+            <p className="text-xs text-amber-700 dark:text-amber-500">
+              Guess: <span className="font-medium">{candidate.categorySuggestion}</span>{" "}
+              — not printed
+            </p>
+            {candidate.categoryEvidence && (
+              <p className="truncate text-xs text-zinc-500">
+                from &ldquo;{candidate.categoryEvidence}&rdquo;
+              </p>
+            )}
+          </div>
+          <button
+            onClick={() =>
+              setDraft({ ...draft, category: candidate.categorySuggestion })
+            }
+            className="flex-shrink-0 rounded-full bg-amber-600 px-3 py-1 text-xs font-medium text-white"
+          >
+            Use
+          </button>
+        </div>
+      )}
 
       <div className="flex flex-col gap-2">
         <button
