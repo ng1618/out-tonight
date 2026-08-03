@@ -31,6 +31,50 @@ function sameRow(a: Line, b: Line): boolean {
   return overlap > Math.min(a.box.height, b.box.height) * 0.5;
 }
 
+/** Same size within a tolerance — the test for "set in the same typeface". */
+function sameSize(a: number, b: number, tolerance = 0.25): boolean {
+  return Math.abs(a - b) <= Math.max(a, b) * tolerance;
+}
+
+/**
+ * Text set at the same size is usually the same kind of information: on a
+ * programme every date matches every other date, every title matches every
+ * other title, every category label matches every other label.
+ *
+ * So instead of judging each row alone — where the largest line might be a
+ * stray fragment — work out what a *title* is set at across the whole page,
+ * and prefer lines matching it. This is what makes a two-line title reliable:
+ * its second line is the same size as its first, while the category label
+ * beneath is not.
+ */
+function estimateTitleHeight(lines: Line[], contextDate: Date): number | null {
+  const nonDate = lines.filter((l) => {
+    const text = l.text.trim();
+    if (text.length < 3) return false;
+    if (parseGermanDates(text, contextDate).length > 0) return false;
+    const asCategory = findCategory([text]);
+    if (asCategory?.source === "printed" && text.length < 24) return false;
+    return true;
+  });
+  if (nonDate.length === 0) return null;
+
+  // Bucket by height and take the most populated band; ties go to the larger,
+  // since titles outrank body text when both are common.
+  const buckets = new Map<number, { count: number; total: number }>();
+  for (const line of nonDate) {
+    const key = Math.round(line.box.height / 4) * 4;
+    const bucket = buckets.get(key) ?? { count: 0, total: 0 };
+    bucket.count += 1;
+    bucket.total += line.box.height;
+    buckets.set(key, bucket);
+  }
+
+  const best = [...buckets.entries()].sort(
+    (a, b) => b[1].count - a[1].count || b[0] - a[0]
+  )[0];
+  return best ? best[1].total / best[1].count : null;
+}
+
 /**
  * Reading-order text interleaves the columns of a magazine page into nonsense
  * ("SMD407 SOMMERFE FLINTA*OPEN STAGE"). Bounding boxes fix that with
@@ -53,6 +97,9 @@ export function buildCandidates(
     (l) => parseGermanDates(l.text, contextDate).length > 0
   ).length;
   const posterMode = dateLineCount <= 2;
+
+  // What a title looks like on this page, learned once from every line.
+  const titleHeight = estimateTitleHeight(decorated, contextDate);
 
   const posterTitle = posterMode
     ? decorated
@@ -112,9 +159,10 @@ export function buildCandidates(
       (l) => parseGermanDates(l.text, contextDate).length === 0
     );
 
-    // Titles only ever come from the same row, or from below when the row was
-    // empty — a wider net here is what pulled in the neighbouring column.
-    const cluster = rowMates.length > 0 ? rowMates : below;
+    // A title can start on the date's row and wrap onto the next line, so both
+    // are eligible. The seed still prefers the row; the lines below are what
+    // let the rest of a wrapped name be picked up.
+    const cluster = [...rowMates, ...below];
 
     // On a poster the whole image is one event, so price and category can be
     // read from anywhere on it; on a programme they must stay within the row.
@@ -138,12 +186,28 @@ export function buildCandidates(
       return true;
     });
 
-    // A grid title wraps: "DIES & DAS –" / "DER NACHTFLOH-" / "MARKT IN MAINZ"
-    // are one name across three boxes. Start from the largest line and take the
+    // A title wraps: "DIES & DAS –" / "DER NACHTFLOH-" / "MARKT IN MAINZ" are
+    // one name across three boxes. Start from the largest line and take the
     // lines directly under it that are set at the same size — a smaller line
     // below is the category or the subtitle, not more of the title.
+    //
+    // Ties on height go to the line highest up, so a wrapped name is entered at
+    // its first line rather than its second.
+    // Prefer a line set at the page's title size over merely the biggest one —
+    // a stray large fragment shouldn't outrank text that matches every other
+    // title on the page. Ties go to the highest line, so a wrapped name is
+    // entered at its first line rather than its second.
+    const byPageStyle = titleCandidates
+      .filter((l) => titleHeight !== null && sameSize(l.box.height, titleHeight))
+      .sort((a, b) => a.box.y - b.box.y || a.box.x - b.box.x);
+
     const seed =
-      posterTitle ?? [...titleCandidates].sort((a, b) => b.box.height - a.box.height)[0] ?? null;
+      posterTitle ??
+      byPageStyle[0] ??
+      [...titleCandidates].sort(
+        (a, b) => b.box.height - a.box.height || a.box.y - b.box.y
+      )[0] ??
+      null;
 
     const titleParts: Line[] = [];
     if (seed) {
@@ -153,9 +217,11 @@ export function buildCandidates(
         .sort((a, b) => a.box.y - b.box.y);
       let last = seed;
       for (const line of ordered) {
-        const sameSize = Math.abs(line.box.height - seed.box.height) <= seed.box.height * 0.3;
+        // Same size means same kind of information, so it is more of the title;
+        // a smaller line beneath is the category or a subtitle.
+        const matches = sameSize(line.box.height, seed.box.height, 0.3);
         const adjacent = line.box.y - last.bottom < seed.box.height * 1.2;
-        if (!sameSize || !adjacent) break;
+        if (!matches || !adjacent) break;
         titleParts.push(line);
         last = line;
       }
@@ -189,7 +255,7 @@ export function buildCandidates(
       if (!date.yearPrinted) needsReview.push("startDate");
       if (date.weekdayMatches === false) needsReview.push("startDate");
       if (titleParts.length === 0) needsReview.push("title");
-      if (times.length === 0) needsReview.push("startTime");
+
       if (!category) needsReview.push("category");
 
       candidates.push({

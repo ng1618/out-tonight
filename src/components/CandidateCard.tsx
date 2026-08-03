@@ -17,7 +17,7 @@ const LABELS: Record<string, string> = {
   price: "Price",
 };
 
-type Target = "title" | "venueName" | "city" | "price";
+type Target = "title" | "venueName" | "city";
 
 export default function CandidateCard({
   candidate,
@@ -134,10 +134,9 @@ export default function CandidateCard({
         </p>
       )}
 
-      <div className="grid grid-cols-2 gap-2">
-        {field("startDate", "Date", "date")}
-        {field("startTime", "Time", "time")}
-      </div>
+      {/* Time and price are still parsed and logged, just not shown — they are
+          not worth a field each when a page yields a dozen events. */}
+      {field("startDate", "Date", "date")}
 
       {/* Multi-day events ("17 bis 19. Juli") need an end date, and one that
           was detected but never shown couldn't be corrected. */}
@@ -167,12 +166,6 @@ export default function CandidateCard({
           Runs over several days
         </button>
       )}
-      {candidate.extracted.timeNote && (
-        <p className="-mt-1 text-xs text-zinc-500">
-          Printed as: {candidate.extracted.timeNote}
-        </p>
-      )}
-
       {field("title", "Title")}
 
       <div className="grid grid-cols-2 gap-2">
@@ -181,7 +174,6 @@ export default function CandidateCard({
       </div>
 
       <div className="grid grid-cols-2 gap-2">
-        {field("price", "Price")}
         <label className="flex flex-col gap-1">
           <span className="text-xs text-zinc-500">
             Category
@@ -225,7 +217,6 @@ export default function CandidateCard({
                     ["title", "Title"],
                     ["venueName", "Venue"],
                     ["city", "City"],
-                    ["price", "Price"],
                   ] as [Target, string][]
                 ).map(([key, label]) => (
                   <button
