@@ -1,9 +1,12 @@
 "use client";
 
-import { useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { CATEGORIES } from "@/lib/categories";
 import type { CandidateFields, CandidateRecord } from "@/lib/client/schema";
 import { confirmCandidate, discardCandidate } from "@/lib/client/store";
+
+/** A tap on one of the photo's boxes, routed from the page to the active card. */
+export type BoxCommand = { id: number; candidateId: number; text: string };
 
 const LABELS: Record<string, string> = {
   title: "Title",
@@ -19,11 +22,16 @@ type Target = "title" | "venueName" | "city" | "price";
 export default function CandidateCard({
   candidate,
   lines = [],
+  boxCommand,
+  onPickingChange,
   onResolved,
 }: {
   candidate: CandidateRecord;
   /** Every line OCR found, so unused ones can be tapped into a field. */
   lines?: string[];
+  boxCommand?: BoxCommand | null;
+  /** Tells the page which card and field the photo's boxes should feed. */
+  onPickingChange?: (candidateId: number, target: Target | null) => void;
   onResolved: (id: number) => void;
 }) {
   const [draft, setDraft] = useState<CandidateFields>(candidate.current);
@@ -33,18 +41,48 @@ export default function CandidateCard({
   const [showLines, setShowLines] = useState(false);
   const [showEnd, setShowEnd] = useState(false);
 
-  /** Append a detected line to the chosen field rather than retyping it. */
-  function appendToField(text: string) {
-    setDraft((d) => {
-      const current = d[target];
-      return { ...d, [target]: current ? `${current} ${text}`.trim() : text };
-    });
-  }
+  /**
+   * Toggle rather than append: tapping a piece already in the field takes it
+   * out again. That is what makes order fixable — remove "Open Air", add
+   * "49. Flörsheimer", then add "Open Air" back after it.
+   */
+  const toggleInField = useCallback(
+    (text: string) => {
+      setDraft((d) => {
+        const current = d[target] ?? "";
+        const at = current.toLowerCase().indexOf(text.toLowerCase());
+        if (at !== -1) {
+          const without = (current.slice(0, at) + current.slice(at + text.length))
+            .replace(/\s{2,}/g, " ")
+            .trim();
+          return { ...d, [target]: without || null };
+        }
+        return { ...d, [target]: current ? `${current} ${text}`.trim() : text };
+      });
+    },
+    [target]
+  );
 
-  const isUsed = (text: string) =>
-    Object.values(draft).some(
-      (v) => typeof v === "string" && v.toLowerCase().includes(text.toLowerCase())
+  /** In the field being edited — tapping again removes it. */
+  const inTarget = (text: string) =>
+    (draft[target] ?? "").toLowerCase().includes(text.toLowerCase());
+
+  /** Used by some other field, so worth dimming but not marking as selected. */
+  const inOtherField = (text: string) =>
+    !inTarget(text) &&
+    Object.entries(draft).some(
+      ([k, v]) =>
+        k !== target && typeof v === "string" && v.toLowerCase().includes(text.toLowerCase())
     );
+
+  // Taps on the photo's boxes are routed here by the page, which knows which
+  // card is currently picking.
+  useEffect(() => {
+    if (boxCommand && boxCommand.candidateId === candidate.id) {
+      toggleInField(boxCommand.text);
+    }
+    // Keyed on the command id so the same text can be tapped twice in a row.
+  }, [boxCommand?.id]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const flags = candidate.needsReview;
 
@@ -193,7 +231,10 @@ export default function CandidateCard({
                   <button
                     key={key}
                     type="button"
-                    onClick={() => setTarget(key)}
+                    onClick={() => {
+                      setTarget(key);
+                      onPickingChange?.(candidate.id, key);
+                    }}
                     className={`rounded-full px-2.5 py-1 text-xs font-medium ${
                       target === key
                         ? "bg-zinc-950 text-white dark:bg-zinc-50 dark:text-black"
@@ -210,13 +251,13 @@ export default function CandidateCard({
                   <button
                     key={`${i}-${text}`}
                     type="button"
-                    onClick={() => appendToField(text)}
-                    // Already-used lines are dimmed rather than hidden, since a
-                    // word can legitimately belong to two fields.
+                    onClick={() => toggleInField(text)}
                     className={`rounded border px-2 py-1 text-xs ${
-                      isUsed(text)
-                        ? "border-zinc-200 text-zinc-400 dark:border-zinc-800 dark:text-zinc-600"
-                        : "border-zinc-300 text-zinc-700 dark:border-zinc-700 dark:text-zinc-200"
+                      inTarget(text)
+                        ? "border-zinc-950 bg-zinc-950 text-white dark:border-zinc-50 dark:bg-zinc-50 dark:text-black"
+                        : inOtherField(text)
+                          ? "border-zinc-200 text-zinc-400 dark:border-zinc-800 dark:text-zinc-600"
+                          : "border-zinc-300 text-zinc-700 dark:border-zinc-700 dark:text-zinc-200"
                     }`}
                   >
                     {text}
@@ -224,7 +265,12 @@ export default function CandidateCard({
                 ))}
               </div>
               <p className="text-xs text-zinc-500">
-                Tapping adds to <span className="font-medium">{target === "venueName" ? "Venue" : target}</span>.
+                Tap to add to{" "}
+                <span className="font-medium">
+                  {target === "venueName" ? "Venue" : target}
+                </span>
+                ; tap a filled-in one to take it out again. You can also tap the
+                boxes on the photo above.
               </p>
             </>
           )}

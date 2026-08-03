@@ -13,10 +13,16 @@ export default function PhotoWithBoxes({
   blob,
   lines,
   showBoxes = true,
+  onBoxTap,
+  selectedTexts = [],
 }: {
   blob: Blob;
   lines: OcrLineRecord[];
   showBoxes?: boolean;
+  /** Set while a field is being filled, making each box a tap target. */
+  onBoxTap?: (text: string) => void;
+  /** Texts already in the field being edited, drawn as filled. */
+  selectedTexts?: string[];
 }) {
   const [url, setUrl] = useState<string | null>(null);
   const [natural, setNatural] = useState<{ w: number; h: number } | null>(null);
@@ -62,20 +68,33 @@ export default function PhotoWithBoxes({
         <svg
           viewBox={`0 0 ${space.w} ${space.h}`}
           preserveAspectRatio="none"
-          className="pointer-events-none absolute inset-0 h-full w-full"
+          className={`absolute inset-0 h-full w-full ${
+            onBoxTap ? "cursor-pointer" : "pointer-events-none"
+          }`}
         >
-          {lines.map((line, i) => (
-            <rect
-              key={i}
-              x={line.box.x}
-              y={line.box.y}
-              width={line.box.width}
-              height={line.box.height}
-              fill="none"
-              stroke={line.confidence > 0.8 ? "#10b981" : "#f59e0b"}
-              strokeWidth={Math.max(1, space.w / 400)}
-            />
-          ))}
+          {lines.map((line, i) => {
+            const selected = selectedTexts.some(
+              (t) => t.toLowerCase() === line.text.trim().toLowerCase()
+            );
+            return (
+              <rect
+                key={i}
+                x={line.box.x}
+                y={line.box.y}
+                width={line.box.width}
+                height={line.box.height}
+                // Transparent fill still receives taps, so the whole box is a
+                // target rather than just its 1px outline.
+                fill={selected ? "rgba(16,185,129,0.35)" : "transparent"}
+                stroke={
+                  selected ? "#10b981" : line.confidence > 0.8 ? "#10b981" : "#f59e0b"
+                }
+                strokeWidth={Math.max(1, space.w / (selected ? 200 : 400))}
+                onClick={onBoxTap ? () => onBoxTap(line.text.trim()) : undefined}
+                style={onBoxTap ? { pointerEvents: "all" } : undefined}
+              />
+            );
+          })}
         </svg>
       )}
     </div>

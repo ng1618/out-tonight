@@ -4,7 +4,7 @@ import Link from "next/link";
 import { useParams } from "next/navigation";
 import { useCallback, useEffect, useState } from "react";
 import BulkVenue from "@/components/BulkVenue";
-import CandidateCard from "@/components/CandidateCard";
+import CandidateCard, { type BoxCommand } from "@/components/CandidateCard";
 import CropBox from "@/components/CropBox";
 import PhotoWithBoxes from "@/components/PhotoWithBoxes";
 import { getPhoto, getRunForPhoto, deletePhoto, rescanPhoto } from "@/lib/client/scan";
@@ -28,6 +28,9 @@ export default function PhotoDetailPage() {
   const [showText, setShowText] = useState(false);
   const [recropping, setRecropping] = useState(false);
   const [progress, setProgress] = useState<ProgressUpdate | null>(null);
+  // Which card's field the photo's boxes currently feed, and the last tap.
+  const [picking, setPicking] = useState<{ candidateId: number; target: string } | null>(null);
+  const [boxCommand, setBoxCommand] = useState<BoxCommand | null>(null);
 
   const load = useCallback(async () => {
     const [p, r, c] = await Promise.all([
@@ -94,7 +97,21 @@ export default function PhotoDetailPage() {
           onSkip={() => handleRecrop(null)}
         />
       ) : (
-        <PhotoWithBoxes blob={photo.blob} lines={run?.lines ?? []} showBoxes={showBoxes} />
+        <PhotoWithBoxes
+          blob={photo.blob}
+          lines={run?.lines ?? []}
+          showBoxes={showBoxes}
+          onBoxTap={
+            picking
+              ? (text) =>
+                  setBoxCommand({
+                    id: Date.now(),
+                    candidateId: picking.candidateId,
+                    text,
+                  })
+              : undefined
+          }
+        />
       )}
 
       {progress && (
@@ -161,6 +178,10 @@ export default function PhotoDetailPage() {
           lines={(run?.lines ?? [])
             .map((l) => l.text.trim())
             .filter((t) => t.length > 1)}
+          boxCommand={boxCommand}
+          onPickingChange={(candidateId, target) =>
+            setPicking(target ? { candidateId, target } : null)
+          }
           onResolved={() => load()}
         />
       ))}
