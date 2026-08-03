@@ -14,16 +14,37 @@ const LABELS: Record<string, string> = {
   price: "Price",
 };
 
+type Target = "title" | "venueName" | "city" | "price";
+
 export default function CandidateCard({
   candidate,
+  lines = [],
   onResolved,
 }: {
   candidate: CandidateRecord;
+  /** Every line OCR found, so unused ones can be tapped into a field. */
+  lines?: string[];
   onResolved: (id: number) => void;
 }) {
   const [draft, setDraft] = useState<CandidateFields>(candidate.current);
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
+  const [target, setTarget] = useState<Target>("title");
+  const [showLines, setShowLines] = useState(false);
+  const [showEnd, setShowEnd] = useState(false);
+
+  /** Append a detected line to the chosen field rather than retyping it. */
+  function appendToField(text: string) {
+    setDraft((d) => {
+      const current = d[target];
+      return { ...d, [target]: current ? `${current} ${text}`.trim() : text };
+    });
+  }
+
+  const isUsed = (text: string) =>
+    Object.values(draft).some(
+      (v) => typeof v === "string" && v.toLowerCase().includes(text.toLowerCase())
+    );
 
   const flags = candidate.needsReview;
 
@@ -79,6 +100,35 @@ export default function CandidateCard({
         {field("startDate", "Date", "date")}
         {field("startTime", "Time", "time")}
       </div>
+
+      {/* Multi-day events ("17 bis 19. Juli") need an end date, and one that
+          was detected but never shown couldn't be corrected. */}
+      {(draft.endDate || showEnd) && (
+        <div className="grid grid-cols-2 gap-2">
+          {field("endDate", "Ends", "date")}
+          <div className="flex items-end">
+            <button
+              type="button"
+              onClick={() => {
+                setDraft({ ...draft, endDate: null });
+                setShowEnd(false);
+              }}
+              className="text-xs text-zinc-500 underline"
+            >
+              single day
+            </button>
+          </div>
+        </div>
+      )}
+      {!draft.endDate && !showEnd && (
+        <button
+          type="button"
+          onClick={() => setShowEnd(true)}
+          className="self-start text-xs text-zinc-500 underline"
+        >
+          Runs over several days
+        </button>
+      )}
       {candidate.extracted.timeNote && (
         <p className="-mt-1 text-xs text-zinc-500">
           Printed as: {candidate.extracted.timeNote}
@@ -115,6 +165,71 @@ export default function CandidateCard({
           </select>
         </label>
       </div>
+
+      {/* OCR usually reads more than gets used. Rather than retyping a title it
+          already found, pick the target field and tap the pieces into it —
+          quicker than a keyboard and it preserves the exact characters read. */}
+      {lines.length > 0 && (
+        <div className="flex flex-col gap-2 rounded-lg bg-zinc-50 p-2 dark:bg-zinc-900/60">
+          <button
+            type="button"
+            onClick={() => setShowLines((v) => !v)}
+            className="self-start text-xs font-medium text-zinc-500"
+          >
+            {showLines ? "Hide" : "Show"} detected text ({lines.length})
+          </button>
+
+          {showLines && (
+            <>
+              <div className="flex flex-wrap gap-1">
+                {(
+                  [
+                    ["title", "Title"],
+                    ["venueName", "Venue"],
+                    ["city", "City"],
+                    ["price", "Price"],
+                  ] as [Target, string][]
+                ).map(([key, label]) => (
+                  <button
+                    key={key}
+                    type="button"
+                    onClick={() => setTarget(key)}
+                    className={`rounded-full px-2.5 py-1 text-xs font-medium ${
+                      target === key
+                        ? "bg-zinc-950 text-white dark:bg-zinc-50 dark:text-black"
+                        : "bg-zinc-200 text-zinc-600 dark:bg-zinc-800 dark:text-zinc-400"
+                    }`}
+                  >
+                    → {label}
+                  </button>
+                ))}
+              </div>
+
+              <div className="flex flex-wrap gap-1">
+                {lines.map((text, i) => (
+                  <button
+                    key={`${i}-${text}`}
+                    type="button"
+                    onClick={() => appendToField(text)}
+                    // Already-used lines are dimmed rather than hidden, since a
+                    // word can legitimately belong to two fields.
+                    className={`rounded border px-2 py-1 text-xs ${
+                      isUsed(text)
+                        ? "border-zinc-200 text-zinc-400 dark:border-zinc-800 dark:text-zinc-600"
+                        : "border-zinc-300 text-zinc-700 dark:border-zinc-700 dark:text-zinc-200"
+                    }`}
+                  >
+                    {text}
+                  </button>
+                ))}
+              </div>
+              <p className="text-xs text-zinc-500">
+                Tapping adds to <span className="font-medium">{target === "venueName" ? "Venue" : target}</span>.
+              </p>
+            </>
+          )}
+        </div>
+      )}
 
       {/* A guess is offered rather than applied: nothing on the page said this,
           so it needs a deliberate tap. The line it came from is shown so the

@@ -158,6 +158,9 @@ export default function PhotoDetailPage() {
         <CandidateCard
           key={`${candidate.id}-${candidate.correctedAt ?? ""}`}
           candidate={candidate}
+          lines={(run?.lines ?? [])
+            .map((l) => l.text.trim())
+            .filter((t) => t.length > 1)}
           onResolved={() => load()}
         />
       ))}
