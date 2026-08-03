@@ -45,6 +45,31 @@ export function buildCandidates(
   const candidates: BuiltCandidate[] = [];
   const usedTitles = new Set<string>();
 
+  // A page with many dates is a programme, where each row's title sits beside
+  // its own date and looking further afield steals a neighbour's. One or two
+  // dates means a poster, where the title is the big text at the top — above
+  // the date, which row-and-below clustering can never reach.
+  const dateLineCount = decorated.filter(
+    (l) => parseGermanDates(l.text, contextDate).length > 0
+  ).length;
+  const posterMode = dateLineCount <= 2;
+
+  const posterTitle = posterMode
+    ? decorated
+        .filter((l) => {
+          const text = l.text.trim();
+          if (text.length < 4) return false;
+          if (parseGermanDates(text, contextDate).length > 0) return false;
+          // Skip the boilerplate that is never a poster's name.
+          if (/^(www\.|https?:)/i.test(text)) return false;
+          if (/eintritt|einlass|camping|tickets?|vvk|abendkasse/i.test(text)) return false;
+          if (!/[a-zäöüß]/i.test(text)) return false;
+          return true;
+        })
+        // Biggest type wins: font size survives OCR even when characters don't.
+        .sort((a, b) => b.box.height - a.box.height)[0] ?? null
+    : null;
+
   for (const anchor of decorated) {
     const dates = parseGermanDates(anchor.text, contextDate);
     if (dates.length === 0) continue;
@@ -70,13 +95,19 @@ export function buildCandidates(
     // Titles only ever come from the same row, or from below when the row was
     // empty — a wider net here is what pulled in the neighbouring column.
     const cluster = rowMates.length > 0 ? rowMates : below;
-    const contextText = [anchor.text, ...rowMates.map((l) => l.text), ...below.map((l) => l.text)].join(" ");
+
+    // On a poster the whole image is one event, so price and category can be
+    // read from anywhere on it; on a programme they must stay within the row.
+    const contextText = posterMode
+      ? decorated.map((l) => l.text).join(" ")
+      : [anchor.text, ...rowMates.map((l) => l.text), ...below.map((l) => l.text)].join(" ");
     const clusterText = contextText;
 
     // A line that is itself a date is never the title — that mistake turns the
     // next programme row's date into this event's name. Month headings
     // ("AUGUST 2026") and stray fragments are excluded the same way.
     const titleLine =
+      posterTitle ??
       cluster
         .filter((l) => {
           const text = l.text.trim();
@@ -97,11 +128,11 @@ export function buildCandidates(
       const price = parseGermanPrice(clusterText);
 
       // Checked line by line so the result can point at the box it came from.
-      const found = findCategory([
-        ...below.map((l) => l.text),
-        ...rowMates.map((l) => l.text),
-        anchor.text,
-      ]);
+      const found = findCategory(
+        posterMode
+          ? decorated.map((l) => l.text)
+          : [...below.map((l) => l.text), ...rowMates.map((l) => l.text), anchor.text]
+      );
 
       // Only a label actually printed on the page is filled in; anything
       // inferred is offered as a suggestion for you to accept or overrule.

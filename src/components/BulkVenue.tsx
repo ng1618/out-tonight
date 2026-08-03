@@ -37,7 +37,8 @@ export default function BulkVenue({
     onApplied();
   }
 
-  if (count === 0) return null;
+  // Pointless for a single event — the card's own venue field is right there.
+  if (count < 2) return null;
 
   return (
     <div className="flex flex-col gap-2 rounded-xl border border-zinc-200 p-3 dark:border-zinc-800">
