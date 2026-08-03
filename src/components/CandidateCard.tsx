@@ -1,12 +1,33 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { CATEGORIES } from "@/lib/categories";
 import type { CandidateFields, CandidateRecord } from "@/lib/client/schema";
 import { confirmCandidate, discardCandidate } from "@/lib/client/store";
 
 /** A tap on one of the photo's boxes, routed from the page to the active card. */
 export type BoxCommand = { id: number; candidateId: number; text: string };
+
+export type DetectedLine = { text: string; confidence: number };
+
+/**
+ * Filters OCR debris out of the suggestions. Deliberately *not* a dictionary
+ * check: a German wordlist would reject KREAOKE, CH'AHOM, Vulvodynia and
+ * FLINTA* — the proper nouns that matter most — while happily passing
+ * plausible-looking nonsense. The model's own confidence is the better signal,
+ * with a few shape rules for the junk that still scores well.
+ */
+function looksLikeJunk(line: DetectedLine): boolean {
+  const text = line.text.trim();
+  if (text.length < 3) return true;
+  if (line.confidence < 0.6) return true;
+  // Bare digit runs like "062130" — a real one ("Rock 13") has letters too.
+  if (/^[\d\s.,:/-]+$/.test(text) && !/\d{1,2}[.:]\d{2}/.test(text)) return true;
+  // Letters with no vowel at all ("strg", "rt.Ist") are almost always misreads;
+  // short all-caps like DJ or KUZ are legitimate, so length-gate it.
+  if (text.length > 3 && /[a-zäöüß]/i.test(text) && !/[aeiouäöüy]/i.test(text)) return true;
+  return false;
+}
 
 const LABELS: Record<string, string> = {
   title: "Title",
@@ -28,7 +49,7 @@ export default function CandidateCard({
 }: {
   candidate: CandidateRecord;
   /** Every line OCR found, so unused ones can be tapped into a field. */
-  lines?: string[];
+  lines?: DetectedLine[];
   boxCommand?: BoxCommand | null;
   /** Tells the page which card and field the photo's boxes should feed. */
   onPickingChange?: (candidateId: number, target: Target | null) => void;
@@ -40,11 +61,17 @@ export default function CandidateCard({
   const [target, setTarget] = useState<Target>("title");
   const [showLines, setShowLines] = useState(false);
   const [showEnd, setShowEnd] = useState(false);
+  const [showJunk, setShowJunk] = useState(false);
+  const junkCount = lines.filter(looksLikeJunk).length;
 
   /**
    * Toggle rather than append: tapping a piece already in the field takes it
    * out again. That is what makes order fixable — remove "Open Air", add
    * "49. Flörsheimer", then add "Open Air" back after it.
+   *
+   * When the caret is sitting inside the field, the text lands *there* rather
+   * than at the end, so a missing first word can be dropped into place without
+   * clearing everything first.
    */
   const toggleInField = useCallback(
     (text: string) => {
@@ -57,11 +84,37 @@ export default function CandidateCard({
             .trim();
           return { ...d, [target]: without || null };
         }
-        return { ...d, [target]: current ? `${current} ${text}`.trim() : text };
+        if (!current) return { ...d, [target]: text };
+
+        // caretRef is captured on blur, which fires before the tap's click.
+        const caret = caretRef.current;
+        const pos =
+          caret && caret.field === target && caret.pos <= current.length
+            ? caret.pos
+            : current.length;
+
+        const before = current.slice(0, pos).replace(/\s+$/, "");
+        const after = current.slice(pos).replace(/^\s+/, "");
+        const joined = [before, text, after].filter(Boolean).join(" ");
+        return { ...d, [target]: joined };
       });
     },
     [target]
   );
+
+  /** Remembers where the cursor was, since tapping a chip blurs the input. */
+  const caretRef = useRef<{ field: Target; pos: number } | null>(null);
+
+  const rememberCaret = (key: keyof CandidateFields) => (
+    e: React.SyntheticEvent<HTMLInputElement>
+  ) => {
+    if (key === "title" || key === "venueName" || key === "city") {
+      caretRef.current = {
+        field: key,
+        pos: e.currentTarget.selectionStart ?? e.currentTarget.value.length,
+      };
+    }
+  };
 
   /** In the field being edited — tapping again removes it. */
   const inTarget = (text: string) =>
@@ -119,6 +172,17 @@ export default function CandidateCard({
         type={type}
         value={draft[key] ?? ""}
         onChange={(e) => setDraft({ ...draft, [key]: e.target.value || null })}
+        // Tracked on every interaction so the position survives the blur that
+        // tapping a chip or a box causes.
+        onSelect={rememberCaret(key)}
+        onKeyUp={rememberCaret(key)}
+        onClick={rememberCaret(key)}
+        onFocus={() => {
+          if (key === "title" || key === "venueName" || key === "city") {
+            setTarget(key);
+            onPickingChange?.(candidate.id, key);
+          }
+        }}
         className="rounded-lg border border-zinc-200 px-2 py-1.5 text-sm dark:border-zinc-800 dark:bg-zinc-900"
       />
     </label>
@@ -238,23 +302,43 @@ export default function CandidateCard({
               </div>
 
               <div className="flex flex-wrap gap-1">
-                {lines.map((text, i) => (
-                  <button
-                    key={`${i}-${text}`}
-                    type="button"
-                    onClick={() => toggleInField(text)}
-                    className={`rounded border px-2 py-1 text-xs ${
-                      inTarget(text)
-                        ? "border-zinc-950 bg-zinc-950 text-white dark:border-zinc-50 dark:bg-zinc-50 dark:text-black"
-                        : inOtherField(text)
-                          ? "border-zinc-200 text-zinc-400 dark:border-zinc-800 dark:text-zinc-600"
-                          : "border-zinc-300 text-zinc-700 dark:border-zinc-700 dark:text-zinc-200"
-                    }`}
-                  >
-                    {text}
-                  </button>
-                ))}
+                {/* Best-read lines first. Confidence can't separate a real
+                    short title from a clipped fragment — both score well — so
+                    it orders rather than hides, and cropping tighter remains
+                    the actual fix for a cluttered list. */}
+                {(showJunk ? lines : lines.filter((l) => !looksLikeJunk(l)))
+                  .slice()
+                  .sort((a, b) => b.confidence - a.confidence)
+                  .map((line, i) => (
+                    <button
+                      key={`${i}-${line.text}`}
+                      type="button"
+                      onClick={() => toggleInField(line.text)}
+                      className={`rounded border px-2 py-1 text-xs ${
+                        inTarget(line.text)
+                          ? "border-zinc-950 bg-zinc-950 text-white dark:border-zinc-50 dark:bg-zinc-50 dark:text-black"
+                          : inOtherField(line.text)
+                            ? "border-zinc-200 text-zinc-400 dark:border-zinc-800 dark:text-zinc-600"
+                            : "border-zinc-300 text-zinc-700 dark:border-zinc-700 dark:text-zinc-200"
+                      }`}
+                    >
+                      {line.text}
+                    </button>
+                  )
+                )}
               </div>
+
+              {junkCount > 0 && (
+                <button
+                  type="button"
+                  onClick={() => setShowJunk((v) => !v)}
+                  className="self-start text-xs text-zinc-500 underline"
+                >
+                  {showJunk
+                    ? `Hide ${junkCount} low-confidence`
+                    : `Show ${junkCount} low-confidence`}
+                </button>
+              )}
               <p className="text-xs text-zinc-500">
                 Tap to add to{" "}
                 <span className="font-medium">

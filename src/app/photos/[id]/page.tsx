@@ -176,8 +176,8 @@ export default function PhotoDetailPage() {
           key={`${candidate.id}-${candidate.correctedAt ?? ""}`}
           candidate={candidate}
           lines={(run?.lines ?? [])
-            .map((l) => l.text.trim())
-            .filter((t) => t.length > 1)}
+            .map((l) => ({ text: l.text.trim(), confidence: l.confidence }))
+            .filter((l) => l.text.length > 1)}
           boxCommand={boxCommand}
           onPickingChange={(candidateId, target) =>
             setPicking(target ? { candidateId, target } : null)
