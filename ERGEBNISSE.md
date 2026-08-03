@@ -2,7 +2,32 @@
 
 > Gemessen, nicht geschätzt. Jede Zahl hier stammt aus einem Lauf gegen die zehn
 > echten Fotos in `NOTIZEN.md`, nicht aus einer Einschätzung.
-> **Stand: 02.08.2026**
+> **Stand: 03.08.2026**
+
+---
+
+## 0. Kurzfassung (Stand 03.08.2026)
+
+Seit der ersten Messung ist die OCR vom Node-Prozess in den Browser gewandert und
+das Zuschneiden dazugekommen. Die beiden wichtigsten Zahlen:
+
+| | Ohne Zuschnitt | Mit Zuschnitt auf die Spalte |
+|---|---|---|
+| Korrekte Titel (KREA-Seite) | 4/10 | **9/10** |
+| Laufzeit | 12,0 s | **5,2 s** |
+
+Alle Fehler ohne Zuschnitt stammten aus der Nachbarspalte („Momo l ab 5 Ja",
+„Sonne, Sehnsuc", „Da Capo - Leipz"). Mit Zuschnitt wurden zusätzlich zwei
+Termine gefunden, die vorher ganz fehlten.
+
+**Im Browser statt in Node:** WebGPU ist verfügbar, die KREA-Seite braucht
+11,1 s für acht Varianten und liefert 10 Kandidaten, 8 davon
+wochentagsgeprüft. Das Modell (~6 MB) wird einmal geladen und gecacht.
+
+**Layouts:** Programmseiten mit Zeilenlayout (KREA) und Rasterlayout (KUZ)
+funktionieren beide, nachdem drei Fehler behoben waren — Spaltenzwischenraum,
+mehrzeilige Titel, Kategorielabels als Titel. Gestaltete Einzelplakate bleiben
+das Problem.
 
 ---
 
@@ -139,11 +164,55 @@ selbstbewusst ein falsches Datum erfindet.
 
 ---
 
+## 7b. Layout-Fehler, gefunden durch Draufschauen (03.08.2026)
+
+Erst der Blick auf mehrere Fotos nebeneinander zeigte, dass „die Titel sind
+kaputt" in Wahrheit „Rasterlayouts sind kaputt" hieß. Die KREA-Seite lieferte
+längst 14 von 14 korrekten Titeln.
+
+| Symptom (KUZ-Seite) | Ursache | Behebung |
+|---|---|---|
+| `"14.08."` als Titel | Zeilennachbarn wurden unabhängig von der Entfernung genommen; im Raster steht dort die *andere Spalte* | Abstand > 3 Zeilenhöhen zählt nicht mehr als dieselbe Zeile |
+| `"DIES & DAS-"` abgeschnitten | Nur eine Zeile wurde Titel; Rastertitel laufen über drei | Titel absorbiert direkt darunterliegende Zeilen **gleicher Schriftgröße** |
+| `"KONZERT: POP"` als Titel | Ein Kategorielabel war als Name zugelassen | Reine Kategorielabels sind keine Titel mehr |
+| Zweizeilige Titel im Zeilenlayout | Ein Titel, der neben dem Datum beginnt und darunter weiterläuft, lag außerhalb der Zeile — dem einzigen Ort, an dem gesucht wurde | Zeile **und** darunter sind zulässig |
+
+Beim Plakat kam derselbe Denkfehler in anderer Form vor: der Titel steht
+**über** dem Datum, gesucht wurde nur rechts und darunter. Ergebnis war
+`"Binfritt Frei"` — die verlesene Preiszeile. Seitdem unterscheidet der Code
+Plakat (ein bis zwei Daten, Titel ist der größte Text irgendwo) von
+Programmseite (viele Daten, Titel bleibt in seiner Zeile).
+
+**Offene Schwäche dieser Unterscheidung:** Sie zählt schlicht Datumszeilen
+(≤ 2 = Plakat). Ein Plakat mit drei Terminen oder ein Zuschnitt, der zwei
+Zeilen erwischt, wählt den falschen Modus. Auf allen zehn Testfotos hielt die
+Regel; sie ist trotzdem der wahrscheinlichste Kandidat für einen Fehlgriff im
+Feld.
+
+## 7c. Was die Konfidenz *nicht* leistet
+
+Die Vorschlagsliste sollte um OCR-Müll bereinigt werden. Gemessen auf einer
+unzugeschnittenen Seite filtert die Konfidenzschwelle **4 von 48 Zeilen**.
+
+Der Rest ist kein Rauschen, sondern am Bildrand abgeschnittene Fragmente
+echten Textes — `rt.Ist`, `EC X`, `oufd`, `hle` — und die bewertet die OCR
+genauso hoch wie einen echten kurzen Titel („LOTTE"). Konfidenz sortiert
+deshalb die Liste, statt sie zu filtern.
+
+Ein Wörterbuchabgleich wäre hier das falsche Werkzeug: er verwirft KREAOKE,
+CH'AHOM, Vulvodynia und FLINTA*. Der wirksame Hebel bleibt der Zuschnitt — die
+48 Zeilen enthielten eine Tastatur und zwei Nachbarartikel.
+
 ## 8. Nächste Schritte
 
-1. Zeilen über ihre Bounding-Boxen zu Ereignisblöcken gruppieren (löst das
-   Spaltenproblem der Zeitschriftenseiten)
-2. Titel aus der Box-Höhe schätzen (große Schrift = Titel)
-3. Feineinstellungen der OCR erneut testen — diesmal über den Konstruktor
-4. Ab Block 2: Azure Read als zweiter Durchgang für die Fotos, an denen die
-   lokale OCR scheitert. `raw_sources` erlaubt das ohne erneutes Hochladen.
+1. ~~Zeilen über Bounding-Boxen gruppieren~~ — erledigt, siehe 7b
+2. ~~Titel aus der Box-Höhe schätzen~~ — erledigt, jetzt seitenweit statt je Zeile
+3. **Geschwindigkeit auf dem S24 FE messen** (`adb reverse`, Telefon per USB am
+   Dev-Server). Die Desktop-Zahl von 11,1 s sagt darüber nichts.
+4. Feldtest mit JSON-Export; die Korrekturen sind der Eval-Satz
+5. Feineinstellungen der OCR erneut testen — diesmal über den Konstruktor, der
+   frühere Versuch über die Aufrufoptionen wurde nicht angewendet
+6. Ab Block 2: Azure Read als zweiter Durchgang für Fotos, an denen die lokale
+   OCR scheitert. Das gespeicherte Original erlaubt das ohne erneutes
+   Fotografieren. **F0-Freikontingent: 500 Seiten/Monat**, ein Foto = eine
+   Seite; Grenzen sind 4 MB je Anfrage und ein Abkühlfenster bei Stoßlast.

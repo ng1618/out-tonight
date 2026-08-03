@@ -5,7 +5,62 @@
 
 ---
 
+## Architektur
+
+### Das Telefon hält die Daten, der Server nichts
+- **Frage:** Wo liegen Events, Likes, Venues und Fotos?
+- **Wahl:** **Vollständig auf dem Telefon** (IndexedDB). Der Server hat zwei zustandslose Endpunkte: `fetch-parse` und `geocode`.
+- **Grund:** Die Zielplattform war von Anfang an Android (Arbeitsdokument v1.1). Als serverseitige SQLite-App konnten Fotos, Feed und Likes nicht gemeinsam auf dem Telefon liegen — es hätte zwei getrennte Feeds gegeben. Nur zwei Dinge kann ein Browser nicht selbst: fremde Seiten abrufen (CORS) und Nominatim mit User-Agent ansprechen. Beides braucht keine Datenbank.
+- **Verworfen:** Server-Datenhaltung plus VPS (~5–7 €/Monat) — funktioniert, ist aber eine Desktop-App, die man durchs Telefon bedient.
+- **Nebenwirkung:** Weil nichts serverseitig persistiert, genügt kostenloses Static-Hosting; offline funktioniert alles außer Link-Einfügen und Venue-Aktualisieren.
+- **Datum:** 03.08.2026
+
+### OCR läuft im Browser, nicht auf dem Server
+- **Frage:** Wo wird das Bild gelesen?
+- **Wahl:** **Im Browser** über `ppu-paddle-ocr/web` (WebAssembly, WebGPU wenn verfügbar).
+- **Grund:** Ein Feldtest muss ohne Empfang funktionieren. Gemessen: WebGPU verfügbar, KREA-Seite in 11,1 s über acht Varianten, 10 Kandidaten. Fotos verlassen das Gerät nie.
+- **Verworfen:** OCR serverseitig — hätte Verbindung und Hosting mit Rechenleistung erzwungen.
+- **Offen:** Geschwindigkeit auf dem S24 FE ist ungemessen; Desktop-GPU ist nicht repräsentativ.
+- **Datum:** 03.08.2026
+
+---
+
 ## Erfassung
+
+### Zuschneiden vor dem Lesen
+- **Frage:** Wie werden ineinanderlaufende Spalten einer Zeitschriftenseite getrennt?
+- **Wahl:** **Die Person schneidet zu**, bevor gelesen wird. Das Original bleibt unverändert, nur ein abgeleitetes Bild geht an die OCR.
+- **Grund:** Wirkt stärker als jede Heuristik: auf der KREA-Seite stiegen die korrekten Titel von **4/10 auf 9/10**, die Laufzeit fiel von 12,0 s auf 5,2 s, und zwei Termine wurden überhaupt erst gefunden. Sämtliche Fehler ohne Zuschnitt stammten aus der Nachbarspalte. Wer zuschneidet, weiß bereits, welche Spalte gemeint ist — diese Information ist sonst nirgends verfügbar.
+- **Verworfen:** Spalten allein rechnerisch über Bounding-Boxen trennen. Bleibt als Ergänzung, ersetzt den Zuschnitt aber nicht.
+- **Datum:** 03.08.2026
+
+### Schriftgröße als Typ-Signal
+- **Frage:** Woran erkennt man, welche Zeile der Titel ist?
+- **Wahl:** **Gleiche Schriftgröße heißt gleiche Art von Information.** Die Titelgröße wird einmal für die ganze Seite geschätzt; eine Zeile in dieser Größe schlägt die bloß größte.
+- **Grund:** Auf einer Programmseite gleicht jedes Datum jedem Datum, jeder Titel jedem Titel, jedes Kategorielabel jedem Label. Das macht auch mehrzeilige Titel verlässlich: die zweite Zeile ist wie die erste gesetzt, das Label darunter nicht.
+- **Verworfen:** Nur die größte Zeile je Zeile-Cluster nehmen — ein zufälliges großes Fragment schlug damit den echten Titel.
+- **Datum:** 03.08.2026
+
+### Kein Wörterbuch-Rechtschreibfilter für Vorschläge
+- **Frage:** Wie wird OCR-Müll aus den Vorschlägen gefiltert?
+- **Wahl:** **OCR-Konfidenz sortiert die Liste**, niedrige Werte werden eingeklappt. Kein Wörterbuchabgleich.
+- **Grund:** Eine deutsche Wortliste verwirft genau das Wichtigste — KREAOKE, CH'AHOM, Vulvodynia, FLINTA* — und lässt plausibel aussehenden Unsinn durch. Gemessen filtert die Konfidenz auf einer unzugeschnittenen Seite allerdings nur 4 von 48 Zeilen: der Rest sind am Bildrand abgeschnittene Fragmente echten Textes, die genauso hoch bewertet werden wie ein kurzer echter Titel. Deshalb sortieren statt filtern.
+- **Verworfen:** Aggressive Formregeln — hätten kurze echte Titel wie „LOTTE" getroffen.
+- **Ehrlicher Hinweis:** Der wirksame Hebel gegen eine überladene Liste bleibt engeres Zuschneiden.
+- **Datum:** 03.08.2026
+
+### „Nicht interessant" ist nicht „kein Event"
+- **Frage:** Was passiert beim Verwerfen eines Kandidaten?
+- **Wahl:** **Zwei getrennte Gründe.** „Nicht interessant" heißt: richtig gelesen, aber ungewollt. „Kein Event" heißt: die Extraktion hat etwas erzeugt, das nie eine Veranstaltung war.
+- **Grund:** Nur der zweite Fall ist ein Extraktionsfehler. Zusammengefasst würden korrekte Lesungen als Fehlschläge gezählt und die exportierte Trefferquote wäre wertlos. Geschmack ist keine Qualitätsmessung.
+- **Datum:** 03.08.2026
+
+### Antippen statt Ziehen
+- **Frage:** Wie werden erkannte Textkästen einem Feld zugeordnet?
+- **Wahl:** **Zielfeld wählen, dann Kästen antippen** — auf dem Foto selbst oder in der Chip-Liste. Erneutes Antippen entfernt wieder; der Text landet an der Cursorposition.
+- **Grund:** Drag-and-drop mit dem Daumen auf kleine Ziele ist die unzuverlässigste verfügbare Geste. Das Umschalten macht die Reihenfolge korrigierbar („Open Air" raus, „49. Flörsheimer" rein, „Open Air" wieder dran), ohne das Feld zu leeren.
+- **Verworfen:** Nur Anhängen — erzwang das Neutippen bereits korrekt gelesener Zeichen.
+- **Datum:** 03.08.2026
 
 ### Keine Modell-Extraktion aus Fotos
 - **Frage:** Werden Fotos von einem Sprachmodell gelesen oder mit lokaler OCR plus Regeln?

@@ -1,36 +1,84 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# out-tonight
 
-## Getting Started
+Sammelt Veranstaltungen an einem Ort: abfotografierte Plakate und Programmseiten,
+geteilte Links, Venue-Programme. Später die Frage „was läuft heute Abend?"
 
-First, run the development server:
+**Mobile-first.** Das Telefon hält alle Daten; der Server speichert nichts.
+
+---
+
+## Starten
 
 ```bash
+npm install
 npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+Dann `http://localhost:3001` (oder den Port, den `next dev` meldet). Für eine
+realistische Ansicht: F12 → Strg+Umschalt+M → Gerät wählen.
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+Es gibt **keine Datenbank einzurichten** und **keinen API-Schlüssel**. Beim ersten
+Start lädt die OCR ein ~6 MB großes Modell nach und legt es im Browser-Cache ab.
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+---
 
-## Learn More
+## Architektur
 
-To learn more about Next.js, take a look at the following resources:
+| | Läuft wo | Hält |
+|---|---|---|
+| **Telefon (PWA)** | IndexedDB | **Alles** — Events, Likes, Venues, Serien, Fotos, OCR-Läufe, Kandidaten |
+| **Server** | Zwei Endpunkte | **Nichts** |
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+Der Server beantwortet nur die zwei Fragen, die ein Browser nicht selbst stellen
+kann:
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+- `POST /api/fetch-parse` — Seite abrufen und parsen (CORS verbietet das im Browser)
+- `GET /api/geocode` — Nominatim (verlangt einen User-Agent, den `fetch` nicht setzen darf)
 
-## Deploy on Vercel
+Weil serverseitig nichts persistiert wird, läuft das auf kostenlosem
+Static-Hosting. Ohne Verbindung funktioniert alles außer *Link einfügen* und
+*Venue aktualisieren*.
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+---
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+## Wie ein Foto zu einem Event wird
+
+1. **Zuschneiden** — Ecken auf das Plakat ziehen. Wichtigster Einzelschritt:
+   auf der KREA-Seite stiegen die korrekten Titel dadurch von 4/10 auf 9/10
+   (`ERGEBNISSE.md`).
+2. **Vorverarbeitung** — vier Drehungen × (roh / kontrastverstärkt); die Variante
+   mit der besten `Zeichen × Konfidenz` gewinnt.
+3. **OCR** — PaddleOCR (PP-OCRv6) im Browser, WebGPU wenn vorhanden.
+4. **Regeln** — deutsche Datums-, Zeit- und Preisformate; Kategorie vom
+   gedruckten Label, sonst als Vorschlag.
+5. **Prüfen** — Kandidaten korrigieren und bestätigen. Nichts landet ungefragt
+   im Feed.
+
+Das Foto bleibt unverändert gespeichert, ein Zuschnitt lässt sich jederzeit
+wiederholen.
+
+---
+
+## Dokumente
+
+| Datei | Inhalt |
+|---|---|
+| `ENTSCHEIDUNGEN.md` | Entscheidungslog — bei Widerspruch gilt diese Datei |
+| `ERGEBNISSE.md` | Gemessene Extraktionsqualität, widerlegte Annahmen |
+| `LEARNINGS.md` | Übertragbare Konzepte in Frageform |
+| `NOTIZEN.md` | Testdatensatz, geprüfte Bibliotheken, offene Beobachtungen |
+
+Das Arbeitsdokument mit dem Terminplan liegt außerhalb des Repos (gitignored).
+
+---
+
+## Stand
+
+Läuft lokal, noch nicht auf dem Telefon. Nächster Schritt: `adb reverse` für
+einen ersten Geschwindigkeitstest auf dem Gerät, dann Feldtest mit
+JSON-Export der Logs.
+
+**Bekannte Grenzen:** gestaltete Einzelplakate scheitern häufig (offenes
+Forschungsproblem, keine Bibliothek löst das), Preise werden aus echten Fotos
+praktisch nie gelesen, Titel bleiben Handarbeit — dafür gibt es das Antippen
+der erkannten Textkästen.

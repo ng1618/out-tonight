@@ -44,6 +44,27 @@ Geprüfte Bibliotheken (Stand 02.08.2026):
 | `@gutenye/ocr-node` | MIT | **Dez 2024** | PaddleOCR-basiert, aber ~20 Monate ohne Pflege |
 | `scribe.js-ocr` | **AGPL-3.0** | Jul 2026 | meiden — Copyleft würde bei öffentlichem Repo die ganze App erfassen |
 
+## 03.08.2026 — Umbau auf mobile-first
+
+Die App hält ihre Daten jetzt vollständig auf dem Telefon (IndexedDB), die OCR
+läuft im Browser. Serverseitig bleiben zwei zustandslose Endpunkte. Gründe in
+`ENTSCHEIDUNGEN.md` → Architektur, Zahlen in `ERGEBNISSE.md`.
+
+Entfernt und damit auch als Abhängigkeit weg: `better-sqlite3`, `web-push`,
+`@anthropic-ai/sdk`, `zod`, `onnxruntime-node`, der Passwortschutz und sämtliche
+datenbankgestützten API-Routen.
+
+**Noch offen für den Telefon-Test:**
+
+- Geschwindigkeit auf dem S24 FE ist ungemessen (Desktop: 11,1 s mit WebGPU)
+- Kein Weg, ein Event **von Hand** anzulegen, wenn die OCR nichts findet —
+  bislang lässt sich nur korrigieren, was sie geraten hat
+- Boxkoordinaten stammen aus der Gewinnervariante; bei einem Foto, bei dem 90°
+  oder 270° gewinnt, liegen die Kästen über dem ungedrehten Bild falsch.
+  Ungetestet.
+- `share_target` nimmt derzeit nur Links (GET). Geteilte Fotos bräuchten POST
+  plus einen Service Worker, der die Anfrage abfängt.
+
 ## 02.08.2026 — Offene Beobachtungen
 
 - Die Systemuhr dieses Rechners und das Datum im Arbeitsdokument liefen auseinander

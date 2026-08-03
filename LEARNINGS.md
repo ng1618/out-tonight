@@ -156,6 +156,95 @@ Deutsche Programmzeilen drucken „SA 04.07." — Wochentag **und** Datum. Ohne 
 Allgemein: Redundanz in den Daten (Prüfziffer, Wochentag, Zwischensumme) prüft nicht nur — sie kann fehlende Angaben rekonstruieren.
 </details>
 
+## Layout und Interaktion
+
+**Warum schlägt eine Handlung der nutzenden Person oft die bessere Heuristik?**
+
+<details><summary>Antwort</summary>
+
+Weil sie Wissen mitbringt, das in den Daten gar nicht steht.
+
+Die verschränkten Spalten einer Zeitschriftenseite lassen sich rechnerisch
+trennen — mit Bounding-Boxen, Spaltenerkennung, Abstandsschwellen. Ein
+Zuschnitt vor dem Lesen erledigt dasselbe besser: **korrekte Titel von 4/10 auf
+9/10**, Laufzeit halbiert, und zwei vorher unsichtbare Termine gefunden.
+
+Der Grund ist nicht Rechenleistung: Wer zuschneidet, weiß bereits, *welche
+Spalte gemeint war*. Diese Information existiert im Bild nirgends.
+
+Vor dem Bau einer Heuristik also fragen, ob eine billige Geste dieselbe
+Mehrdeutigkeit einfach auflöst.
+</details>
+
+**Welches Signal verrät die Art einer Information, ohne sie zu lesen?**
+
+<details><summary>Antwort</summary>
+
+**Die Schriftgröße.** Gleich gesetzter Text ist meist dieselbe Art von Angabe:
+Auf einer Programmseite gleicht jedes Datum jedem Datum, jeder Titel jedem
+Titel, jedes Kategorielabel jedem Label.
+
+Daraus folgt mehr, als es zunächst scheint. Ein mehrzeiliger Titel wird
+erkennbar, weil seine zweite Zeile gesetzt ist wie die erste — und das
+Kategorielabel darunter eben nicht. Und statt je Zeile die größte Zeile zu
+nehmen (wo ein zufälliges Fragment gewinnt), lässt sich einmal für die ganze
+Seite schätzen, wie ein Titel *aussieht*.
+
+Übertragbar: Typografie, Einrückung und Position sind Struktur, die überlebt,
+auch wenn die Zeichen falsch gelesen werden.
+</details>
+
+**Was ist der Unterschied zwischen „falsch erkannt" und „nicht gewollt"?**
+
+<details><summary>Antwort</summary>
+
+Der eine ist ein Fehler des Systems, der andere eine Entscheidung des Menschen.
+
+Beim Verwerfen eines Kandidaten wird deshalb der Grund festgehalten: „kein
+Event" ist ein Extraktionsfehler, „nicht interessant" heißt korrekt gelesen und
+trotzdem ungewollt. Zusammengefasst würde eine perfekt gelesene Veranstaltung,
+die nur niemanden interessiert, als Fehlschlag gezählt — und die Trefferquote
+wäre wertlos.
+
+Merksatz: **Geschmack ist keine Qualitätsmessung.** Wo eine Metrik beides
+vermischt, misst sie nichts.
+</details>
+
+**Warum ist ein Wörterbuch der falsche Filter für erkannten Text?**
+
+<details><summary>Antwort</summary>
+
+Weil es genau die Wörter verwirft, auf die es ankommt.
+
+Eine deutsche Wortliste kennt KREAOKE, CH'AHOM, Vulvodynia und FLINTA* nicht —
+Eigennamen sind der Inhalt, nicht das Rauschen. Gleichzeitig lässt sie
+plausibel aussehenden Unsinn durch.
+
+Die OCR-Konfidenz ist das bessere Signal, aber auch sie hat Grenzen: gemessen
+filtert sie nur **4 von 48** Zeilen, weil am Bildrand abgeschnittene Fragmente
+echten Textes genauso hoch bewertet werden wie ein kurzer echter Titel.
+Deshalb **sortiert** sie die Liste, statt sie zu filtern.
+
+Allgemein: Ein Filter, der richtige Treffer verwirft, ist schlimmer als gar
+keiner — sortieren ist die verlustfreie Alternative.
+</details>
+
+**Woran erkennt man, dass ein Fehlerbild falsch benannt ist?**
+
+<details><summary>Antwort</summary>
+
+Daran, dass es nur an einem Teil der Fälle auftritt.
+
+„Die Titel sind kaputt" hieß tatsächlich „Rasterlayouts sind kaputt": Die
+Zeilenlayout-Seite lieferte längst 14 von 14 korrekten Titeln, während die
+Rasterseite Daten und Kategorielabels als Namen ausgab. Sichtbar wurde das
+erst, als mehrere Fotos nebeneinander lagen.
+
+Bei einem Verfahren, das über verschiedene Eingaben unterschiedlich gut
+funktioniert, ist der erste Schritt daher nicht die Ursachensuche, sondern
+**das Sortieren der Fälle in „funktioniert" und „funktioniert nicht"**.
+</details>
+
 ## Werkzeuge und Betrieb
 
 **Warum kann ein `npm install` von gestern heute brechen, ohne dass sich Code geändert hat?**
