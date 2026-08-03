@@ -75,22 +75,42 @@ export function buildCandidates(
     if (dates.length === 0) continue;
 
     // Lines to the right on the same row: "SA 04.07. | FLINTA* MUSIC LAB".
+    //
+    // The gap matters. On a two-column grid the nearest thing on the same row
+    // is the *other column's* event, and treating it as this row's title is how
+    // "KONZERT: POP" ended up naming a different date. A real continuation sits
+    // a few characters away; another column sits across a gutter.
+    const maxGap = anchor.box.height * 3;
     const rowMates = decorated
-      .filter((l) => l !== anchor && sameRow(anchor, l) && l.box.x >= anchor.box.x)
+      .filter(
+        (l) =>
+          l !== anchor &&
+          sameRow(anchor, l) &&
+          l.box.x >= anchor.box.x &&
+          l.box.x - anchor.right < maxGap
+      )
       .sort((a, b) => a.box.x - b.box.x);
 
-    // Lines just below the date, stopping short of the next row. On these
-    // programmes the category label ("FESTIVAL", "KONZERT") sits here on its
-    // own line, so it must be read even when the title was found to the right.
-    const below = decorated
+    // Lines below, in the same column, stopping at the next date. A grid title
+    // wraps over several lines ("DIES & DAS –" / "DER NACHTFLOH-" / "MARKT IN
+    // MAINZ"), so a fixed distance either truncates it or runs into the next
+    // event; the next date is the real boundary.
+    const columnWidth = Math.max(anchor.box.width, anchor.box.height * 8);
+    const beneath = decorated
       .filter(
         (l) =>
           l.box.y > anchor.box.y &&
-          l.box.y < anchor.bottom + anchor.box.height * 1.2 &&
-          Math.abs(l.box.x - anchor.box.x) < Math.max(anchor.box.width, l.box.width) * 2 &&
-          parseGermanDates(l.text, contextDate).length === 0
+          l.box.y < anchor.bottom + anchor.box.height * 6 &&
+          Math.abs(l.box.x - anchor.box.x) < columnWidth
       )
       .sort((a, b) => a.box.y - b.box.y);
+
+    const stopAt = beneath.findIndex(
+      (l) => parseGermanDates(l.text, contextDate).length > 0
+    );
+    const below = (stopAt === -1 ? beneath : beneath.slice(0, stopAt)).filter(
+      (l) => parseGermanDates(l.text, contextDate).length === 0
+    );
 
     // Titles only ever come from the same row, or from below when the row was
     // empty — a wider net here is what pulled in the neighbouring column.
@@ -106,20 +126,47 @@ export function buildCandidates(
     // A line that is itself a date is never the title — that mistake turns the
     // next programme row's date into this event's name. Month headings
     // ("AUGUST 2026") and stray fragments are excluded the same way.
-    const titleLine =
-      posterTitle ??
-      cluster
-        .filter((l) => {
+    const titleCandidates = cluster.filter((l) => {
           const text = l.text.trim();
           if (text.length < 3) return false;
           if (parseGermanDates(text, contextDate).length > 0) return false;
           if (/^(MO|DI|MI|DO|FR|SA|SO)\b/i.test(text) && text.length < 12) return false;
-          return true;
-        })
-        .sort((a, b) => b.box.height - a.box.height)[0] ?? null;
+          // A line that is *only* a category label names the kind of event,
+          // not the event — "KONZERT: POP" is not a title.
+          const asCategory = findCategory([text]);
+          if (asCategory?.source === "printed" && text.length < 24) return false;
+      return true;
+    });
+
+    // A grid title wraps: "DIES & DAS –" / "DER NACHTFLOH-" / "MARKT IN MAINZ"
+    // are one name across three boxes. Start from the largest line and take the
+    // lines directly under it that are set at the same size — a smaller line
+    // below is the category or the subtitle, not more of the title.
+    const seed =
+      posterTitle ?? [...titleCandidates].sort((a, b) => b.box.height - a.box.height)[0] ?? null;
+
+    const titleParts: Line[] = [];
+    if (seed) {
+      titleParts.push(seed);
+      const ordered = titleCandidates
+        .filter((l) => l.box.y > seed.box.y)
+        .sort((a, b) => a.box.y - b.box.y);
+      let last = seed;
+      for (const line of ordered) {
+        const sameSize = Math.abs(line.box.height - seed.box.height) <= seed.box.height * 0.3;
+        const adjacent = line.box.y - last.bottom < seed.box.height * 1.2;
+        if (!sameSize || !adjacent) break;
+        titleParts.push(line);
+        last = line;
+      }
+    }
 
     for (const date of dates) {
-      const title = (titleLine?.text ?? anchor.text).replace(/\s+/g, " ").trim();
+      const title = (
+        titleParts.length > 0 ? titleParts.map((l) => l.text).join(" ") : anchor.text
+      )
+        .replace(/\s+/g, " ")
+        .trim();
       const key = `${date.date}|${title.toLowerCase()}`;
       if (usedTitles.has(key)) continue;
       usedTitles.add(key);
@@ -141,7 +188,7 @@ export function buildCandidates(
       const needsReview: string[] = [];
       if (!date.yearPrinted) needsReview.push("startDate");
       if (date.weekdayMatches === false) needsReview.push("startDate");
-      if (!titleLine) needsReview.push("title");
+      if (titleParts.length === 0) needsReview.push("title");
       if (times.length === 0) needsReview.push("startTime");
       if (!category) needsReview.push("category");
 
