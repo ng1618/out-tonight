@@ -99,6 +99,63 @@ Konsequenz: Bei selbstgebauten Parsern gehört eine **Plausibilitätsschwelle** 
 
 ---
 
+## Modelle, OCR und Messen
+
+**Warum ist „das größere Modell nehmen" eine Vermutung und keine Entscheidung?**
+
+<details><summary>Antwort</summary>
+
+Weil Modellgröße auf *Durchschnitt über Benchmarks* optimiert ist, nicht auf deine Daten.
+
+Gemessen an denselben Fotos: das 139-MB-Modell lieferte **weniger als die Hälfte** dessen, was das 6-MB-Standardmodell fand (1257 → 629 Zeichen, 16 → 5 Termine). Die naheliegende Verbesserung war eine Verschlechterung.
+
+Das Tückische: Ohne Kontrollmessung wäre der Rückschritt unsichtbar geblieben — es kommen ja weiterhin *Ergebnisse*, nur weniger. Deshalb bei jedem Modell- oder Bibliothekswechsel **eine Kontrollprobe mitlaufen lassen, die vorher funktioniert hat.**
+</details>
+
+**Wann ist Durchprobieren besser als Erkennen?**
+
+<details><summary>Antwort</summary>
+
+Wenn der Suchraum klein und die Bewertung billig ist.
+
+Die Orientierung eines Fotos zu *erkennen* braucht Kantenerkennung und eine Hough-Transformation. Alle vier Drehungen durchzuprobieren und die OCR-Konfidenz entscheiden zu lassen kostet vier Inferenzen (~5 s) und war in jedem Testfall korrekt.
+
+Faustregel: Bei ≤ ~10 Möglichkeiten mit einer messbaren Gütefunktion ist Brute Force fast immer die bessere Wahl — weniger Code, weniger Annahmen, leichter zu begründen.
+</details>
+
+**Was ist der Unterschied zwischen Zeichen erkennen und Inhalt verstehen?**
+
+<details><summary>Antwort</summary>
+
+OCR liefert *Zeichen mit Koordinaten*. Sie entscheidet nicht, welche Zeile ein Titel und welche ein Ort ist, und zu welchem von fünfzehn Ereignissen einer Seite eine Zeile gehört.
+
+Das war die eigentliche Erkenntnis am Testmaterial: Das schwierige Problem war nie das Lesen, sondern das **Segmentieren**. Der Fließtext einer dreispaltigen Zeitschriftenseite verschränkt die Spalten zu Brei — aber jede Zeile trägt eine Bounding-Box, und die x-Position trennt die Spalten rein rechnerisch.
+
+Merksatz: Bevor man ein Modell für Verständnis einsetzt, prüfen, ob die Geometrie die Frage schon beantwortet.
+</details>
+
+**Woran erkennt man eine gute Fehlermeldung eines unzuverlässigen Verfahrens?**
+
+<details><summary>Antwort</summary>
+
+Daran, dass sie **laut** ist.
+
+Die lokale OCR scheitert an gestalteten Plakaten mit „0 Zeilen, Konfidenz 0,00" — unübersehbar, und das richtige Signal für „hier bitte selbst tippen". Ein Sprachmodell hätte stattdessen ein plausibles, falsches Datum geliefert.
+
+Für ein Verfahren, das systematisch an einem Teil der Eingaben scheitert, ist ein klar erkennbarer Fehlschlag **wertvoller als eine höhere Trefferquote mit stillen Fehlern.**
+</details>
+
+**Wenn eine Quelle dieselbe Angabe doppelt enthält — was fängt man damit an?**
+
+<details><summary>Antwort</summary>
+
+Man nutzt sie zum *Auflösen*, nicht nur zum Prüfen.
+
+Deutsche Programmzeilen drucken „SA 04.07." — Wochentag **und** Datum. Ohne Jahr würde ein im August fotografiertes Juli-Datum auf 2027 gesetzt. Aber nur 2026 ist ein Samstag, also ist es 2026. Aus einem Prüfwert wird ein Bestimmungswert; auf einer Seite hat das acht Termine korrekt datiert.
+
+Allgemein: Redundanz in den Daten (Prüfziffer, Wochentag, Zwischensumme) prüft nicht nur — sie kann fehlende Angaben rekonstruieren.
+</details>
+
 ## Werkzeuge und Betrieb
 
 **Warum kann ein `npm install` von gestern heute brechen, ohne dass sich Code geändert hat?**

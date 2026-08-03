@@ -7,6 +7,35 @@
 
 ## Erfassung
 
+### Keine Modell-Extraktion aus Fotos
+- **Frage:** Werden Fotos von einem Sprachmodell gelesen oder mit lokaler OCR plus Regeln?
+- **Wahl:** **Lokale OCR (`ppu-paddle-ocr`, PP-OCRv6) plus eigene deutsche Regeln.** Kein API-Schlüssel, keine Kosten, offline.
+- **Grund:** Für den tatsächlichen Anwendungsfall ist ein Modell mit Kanonen auf Spatzen geschossen. Die Messung stützt das: Programmseiten liefern 33 Termine bei Konfidenz 0,86–0,93 rein regelbasiert (`ERGEBNISSE.md`). Dazu deterministisch, nachvollziehbar und debugbar — ein falsches Ergebnis lässt sich auf eine Regel zurückführen statt auf einen Prompt.
+- **Verworfen:** Claude Opus 5 mit Bildverstehen. Der Code dafür war gebaut und lief nie — ohne Schlüssel keine einzige echte Extraktion, also auch kein Beleg, dass es besser gewesen wäre.
+- **Preis dafür:** Vier von zehn Fotos (gestaltete Einzelplakate) liefern gar nichts, Preise werden nie erkannt, Titel bleiben Handarbeit.
+- **Datum:** 02.08.2026
+
+### Bildvorverarbeitung: raten statt erkennen
+- **Frage:** Wie wird mit gedrehten und kontrastarmen Fotos umgegangen?
+- **Wahl:** **Alle vier Drehungen × (roh / kontrastverstärkt) durchprobieren** und die beste Variante nach `Zeichenzahl × Konfidenz` wählen.
+- **Grund:** Ersetzt eine Orientierungserkennung vollständig und kostet nur ~5 s je Foto. Bei 5 von 10 Fotos gewann nicht das Original; ein Foto ging von **0 Zeilen auf Konfidenz 0,99**.
+- **Verworfen:** Drehwinkel über Hough-Transformation bestimmen (Aufwand ohne Mehrwert); EXIF auswerten (die Testfotos haben keine EXIF-Orientierung, und bei einem ist die *Seite im Bild* gedreht, nicht das Bild).
+- **Datum:** 02.08.2026
+
+### Kleines OCR-Modell statt großem
+- **Frage:** Welche Modellgröße — `V6_TINY` (6 MB), `V6_SMALL` (30 MB) oder `V6_MEDIUM` (139 MB)?
+- **Wahl:** **`V6_TINY`**, das Standardmodell.
+- **Grund:** Gemessen, nicht angenommen: `V6_MEDIUM` verschlechterte die KREA-Seite von **1257 Zeichen / 16 Terminen auf 629 Zeichen / 5 Termine**. Auch 2×-Hochskalieren verschlechterte das Ergebnis.
+- **Verworfen:** „Größer ist besser" — hätte ohne Messung zu einer Halbierung der Trefferquote geführt, die niemandem aufgefallen wäre.
+- **Datum:** 02.08.2026
+
+### Wochentag bestimmt das Jahr
+- **Frage:** Wie wird das fehlende Jahr bei „SA 04.07." aufgelöst?
+- **Wahl:** **Über den gedruckten Wochentag.** Nur das Jahr, dessen Wochentag zum Datum passt, wird genommen; ohne Wochentag Rückfall auf „nächstes Vorkommen".
+- **Grund:** Ein im August fotografiertes Juli-Datum würde sonst auf 2027 gesetzt. 04.07.2026 ist ein Samstag, 04.07.2027 ein Sonntag — eindeutig auflösbar. Auf der KREA-Seite hat das **8 Termine** korrekt datiert.
+- **Verworfen:** Nur aus dem Kontextdatum ableiten und die Abweichung bloß melden.
+- **Datum:** 02.08.2026
+
 ### Ist ein Foto gleich ein Event?
 - **Frage:** Kann die Erfassung aus einem Foto genau ein Event ableiten?
 - **Wahl:** Nein. Die Erfassung liefert eine **Liste von Kandidaten**, aus der bestätigt wird.

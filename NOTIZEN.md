@@ -28,6 +28,22 @@ schon unklar ist, ob es die Veranstaltung überhaupt gibt.
 **Noch nicht im Datensatz, fehlt für Phase E:** Instagram-Screenshots (anderes Format,
 anderer Textstil), Handzettel/Flyer, Kreidetafeln vor Läden.
 
+## 02.08.2026 — OCR-Messung
+
+Der Testdatensatz oben ist einmal komplett durch die lokale OCR gelaufen.
+Zahlen, Modellvergleich und widerlegte Annahmen stehen in **`ERGEBNISSE.md`**.
+Kurzfassung: 6 von 10 Fotos verwertbar, Programmseiten sehr gut (33 Termine),
+gestaltete Einzelplakate gar nicht.
+
+Geprüfte Bibliotheken (Stand 02.08.2026):
+
+| Paket | Lizenz | Zuletzt aktualisiert | Bewertung |
+|---|---|---|---|
+| `ppu-paddle-ocr` | MIT | Jul 2026 | **eingesetzt** — PP-OCRv6, Boxen + Konfidenz, offline |
+| `tesseract.js` | Apache-2.0 | Dez 2025 | gepflegt, aber scheitert an gestalteten Schriften |
+| `@gutenye/ocr-node` | MIT | **Dez 2024** | PaddleOCR-basiert, aber ~20 Monate ohne Pflege |
+| `scribe.js-ocr` | **AGPL-3.0** | Jul 2026 | meiden — Copyleft würde bei öffentlichem Repo die ganze App erfassen |
+
 ## 02.08.2026 — Offene Beobachtungen
 
 - Die Systemuhr dieses Rechners und das Datum im Arbeitsdokument liefen auseinander
